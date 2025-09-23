@@ -23,12 +23,21 @@ const AnalyzeRequestSchema = z.object({
   }).optional(),
 });
 
+export async function GET() {
+  return NextResponse.json({ message: 'API is working', timestamp: new Date().toISOString() });
+}
+
 export async function POST(request: NextRequest) {
   try {
+    console.log('API route called');
     const body = await request.json();
+    console.log('Request body received:', body);
+    
     const validatedData = AnalyzeRequestSchema.parse(body);
     
     const { rightmoveUrl, nonNegotiables, customCriteria } = validatedData;
+    
+    console.log('Validated data:', { rightmoveUrl, nonNegotiables, customCriteria });
     
     // Validate Rightmove URL
     if (!rightmoveUrl.includes('rightmove.co.uk')) {
@@ -38,8 +47,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log('Starting property scraping...');
     // Scrape property data
     const propertyData = await scrapeRightmoveProperty(rightmoveUrl);
+    console.log('Property data scraped:', propertyData);
     
     // Set default non-negotiables if not provided
     const config = {
@@ -52,8 +63,10 @@ export async function POST(request: NextRequest) {
       customCriteria
     };
 
+    console.log('Starting property analysis...');
     // Analyze the property
     const results = await analyzeProperty(propertyData, config);
+    console.log('Analysis completed');
     
     // Add the original URL to the results
     results.propertyData.url = rightmoveUrl;
@@ -70,7 +83,7 @@ export async function POST(request: NextRequest) {
     }
     
     return NextResponse.json(
-      { error: 'Failed to analyze property. Please check the URL and try again.' },
+      { error: 'Failed to analyze property. Please check the URL and try again.', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
