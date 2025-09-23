@@ -1,11 +1,11 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { Calculator, MapPin, CheckCircle, AlertCircle, TrendingUp, Star, ArrowLeft, Share2, Check } from 'lucide-react';
 import { AnalysisResults } from '@/types/property';
 
-export default function ResultsPage() {
+function ResultsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [results, setResults] = useState<AnalysisResults | null>(null);
@@ -405,5 +405,13 @@ export default function ResultsPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function ResultsPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ResultsContent />
+    </Suspense>
   );
 }

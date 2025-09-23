@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from 'next/navigation';
 
 // Minimal, modern, light-theme redesign of your "What are you looking for?" screen
@@ -78,7 +78,7 @@ function ImportanceSlider({ value, onChange }: { value: number; onChange: (val: 
   );
 }
 
-export default function PropertyPreferencesRedesign() {
+function PropertyPreferencesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -472,5 +472,13 @@ export default function PropertyPreferencesRedesign() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PropertyPreferencesRedesign() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <PropertyPreferencesContent />
+    </Suspense>
   );
 }
