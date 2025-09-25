@@ -24,7 +24,13 @@ const AnalyzeRequestSchema = z.object({
 });
 
 export async function GET() {
-  return NextResponse.json({ message: 'API is working', timestamp: new Date().toISOString() });
+  console.log('GET endpoint called');
+  return NextResponse.json({ 
+    message: 'API is working', 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+    vercel: !!process.env.VERCEL
+  });
 }
 
 export async function POST(request: NextRequest) {

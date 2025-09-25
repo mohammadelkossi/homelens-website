@@ -114,8 +114,8 @@ export default function LandingPage() {
               {/* Image 1 - House exterior */}
               <div className="rounded-2xl overflow-hidden" style={{aspectRatio: '4/3'}}>
                 <img 
-                  src="/Charming Cottage in Lush Countryside.png" 
-                  alt="Charming cottage in lush countryside" 
+                  src="/Graph.png" 
+                  alt="Property analysis graph" 
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -132,19 +132,20 @@ export default function LandingPage() {
               {/* Image 3 - Data Visualization */}
               <div className="rounded-2xl overflow-hidden" style={{aspectRatio: '4/3'}}>
                 <img 
-                  src="/Experian.png" 
-                  alt="Experian data analysis" 
+                  src="/Donut.png" 
+                  alt="Data visualization donut chart" 
                   className="w-full h-full object-cover"
                 />
               </div>
               
               {/* Image 4 - Neighborhood */}
-              <div className="rounded-2xl overflow-hidden" style={{backgroundColor: '#DDBEA8', aspectRatio: '4/3'}}>
+              <div className="rounded-2xl overflow-hidden" style={{aspectRatio: '4/3'}}>
                 <div className="w-full h-full flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="text-4xl mb-2">🏘️</div>
-                    <div className="text-sm font-medium" style={{color: '#246A73', fontFamily: 'Satoshi, sans-serif'}}>Great Location</div>
-                  </div>
+                  <img 
+                    src="/notepad.png" 
+                    alt="Great Location" 
+                    className="w-4/5 h-4/5 object-contain"
+                  />
                 </div>
               </div>
             </div>

@@ -157,60 +157,8 @@ function PropertyPreferencesContent() {
       },
     };
 
-    try {
-      // Process preferences and get analysis results
-      const response = await fetch('/api/process-preferences', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          rightmoveUrl,
-          preferences: JSON.stringify(payload),
-          criteria: {
-            garden: featuresImportance.Garden || 5,
-            garage: featuresImportance.Garage || 5,
-            parkingSpaces: featuresImportance.Parking || 5,
-            location: postcodeImportance,
-            toilets: bathroomsImportance,
-            timeOnMarket: timeOnMarketImportance
-          },
-          locationPostcode: postcode || undefined,
-          toiletsCount: bathrooms ? parseInt(bathrooms) : undefined,
-          timeOnMarketWeeks: timeOnMarket ? (() => {
-            switch(timeOnMarket) {
-              case '24 hours': return 0.14; // ~1 day
-              case '3 days': return 0.43; // ~3 days
-              case '7 days': return 1; // 1 week
-              case '14 days': return 2; // 2 weeks
-              case '28 days': return 4; // 4 weeks
-              case '90 days': return 13; // ~13 weeks
-              default: return undefined;
-            }
-          })() : undefined
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Analysis failed');
-      }
-
-      const analysisResults = await response.json();
-      
-      // Store results and navigate to results page
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('analysisResults', JSON.stringify(analysisResults));
-        localStorage.setItem('analysisResults', JSON.stringify(analysisResults));
-        (window as any).analysisResults = analysisResults;
-      }
-      
-      router.push('/results');
-    } catch (error) {
-      console.error('Analysis failed:', error);
-      setError(error instanceof Error ? error.message : 'Analysis failed');
-      setIsAnalyzing(false);
-    }
+    // Simply navigate to results page with mock data
+    router.push('/results');
   };
 
   const handleBack = () => {
