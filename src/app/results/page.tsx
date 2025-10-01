@@ -175,9 +175,12 @@ function Progress({ value }) {
   );
 }
 
-// Simple lollipop chart for sold price change by period (1m/3m/6m/1y)
+// Simple lollipop chart for sold price change by year (last 5 years)
 function SoldChangeChart({ data }) {
-  const order = ["1m", "3m", "6m", "1y"]; // left to right
+  // Generate last 5 years
+  const currentYear = new Date().getFullYear();
+  const order = Array.from({length: 5}, (_, i) => `'${String(currentYear - 4 + i).slice(2)}`); // ['20', '21', '22', '23', '24']
+  
   const keys = order.filter(k => data && Object.prototype.hasOwnProperty.call(data, k));
   const values = keys.map(k => Number(data[k]));
   const maxAbs = Math.max(1, ...values.map(v => Math.abs(v)));
@@ -220,7 +223,7 @@ function SoldChangeChart({ data }) {
         const up = v >= 0;
         return (
           <g key={k}>
-            <circle cx={x} cy={up ? y : y + 12} r="8" fill={up ? '#16a34a' : '#ef4444'} />
+            <circle cx={x} cy={up ? y : y + 12} r="1.6" fill={up ? '#16a34a' : '#ef4444'} />
             <text x={x} y={up ? y - 10 : y + 32} textAnchor="middle" fontSize="12" fill="#374151" fontWeight="600">
               {fmtPct(v)}
             </text>
@@ -233,8 +236,38 @@ function SoldChangeChart({ data }) {
 }
 
 // ===================== Main Component ==================== //
-function HomeLensReport({ data = mockData, onPrint }) {
+function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDData = false, propertyData = null, onPrint }) {
   const { overallScore, overview, market, customCriteria, summary } = data;
+  
+  // Extract postcode from address for title - try multiple patterns
+  let postcode = 'area';
+  const address = overview.address || '';
+  
+  // Try full UK postcode pattern first
+  const fullPostcodeMatch = address.match(/[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}/i);
+  if (fullPostcodeMatch) {
+    postcode = fullPostcodeMatch[0].toUpperCase();
+  } else {
+    // Try just the outward code (e.g., "NW2", "S10")
+    const outwardMatch = address.match(/\b([A-Z]{1,2}\d{1,2}[A-Z]?)\b/i);
+    if (outwardMatch) {
+      postcode = outwardMatch[1].toUpperCase();
+    }
+  }
+  
+  // Format property type for display
+  const formatPropertyType = (type: string) => {
+    if (!type) return 'properties';
+    const lower = type.toLowerCase();
+    if (lower.includes('semi')) return 'Semi detached houses';
+    if (lower.includes('detached')) return 'Detached houses';
+    if (lower.includes('terrace')) return 'Terraced houses';
+    if (lower.includes('flat') || lower.includes('apartment')) return 'Flats';
+    if (lower.includes('bungalow')) return 'Bungalows';
+    return type + ' houses';
+  };
+  
+  const propertyType = formatPropertyType(overview.propertyType);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: COLORS.beige, color: COLORS.navy }}>
@@ -313,6 +346,7 @@ function HomeLensReport({ data = mockData, onPrint }) {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-xl font-semibold">{overview.address}</h2>
+              {typeof overview.price === "number" && <Pill>{fmtGBP(overview.price)}</Pill>}
               {typeof overview.floorAreaSqm === "number" && <Pill>{overview.floorAreaSqm} sqm</Pill>}
               {typeof overview.bedrooms === "number" && <Pill>{overview.bedrooms} bed</Pill>}
               {typeof overview.bathrooms === "number" && <Pill>{overview.bathrooms} bath</Pill>}
@@ -341,7 +375,13 @@ function HomeLensReport({ data = mockData, onPrint }) {
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <ToneStat metric="yoy" label="YoY price growth (postcode)" value={fmtPct(market.avgPctPriceGrowthPerYear)} data={{market, overview}} />
+          <ToneStat 
+            metric="yoy" 
+            label="AVG PRICE GROWTH" 
+            value={fmtPct(market.avgPctPriceGrowthPerYear)} 
+            helper={propertyData?.saleHistory && propertyData.saleHistory.length >= 2 ? "Property-specific history" : "Market average"}
+            data={{market, overview}} 
+          />
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="text-xs uppercase tracking-wider text-gray-500">Time on market</div>
             <div className="mt-1 text-xl font-semibold" style={{color: '#DDBEA8'}}>{fmtNum(market.timeOnMarketDays)} days</div>
@@ -353,10 +393,114 @@ function HomeLensReport({ data = mockData, onPrint }) {
         </div>
 
         {/* Sold price change — lollipop chart */}
-        <div className="mt-6 rounded-2xl border border-gray-200 p-4">
+        <div className="mt-6">
+          <h4 className="text-sm font-semibold mb-3" style={{fontSize: '0.7rem'}}>
+            Average sold house prices in {postcode} for {propertyType}
+          </h4>
           <SoldChangeChart data={market.avgPriceChangeSoldByPeriod} />
         </div>
       </section>
+
+      {/* ===== PROPERTY SALE HISTORY SECTION ===== */}
+      {propertyData?.saleHistory && propertyData.saleHistory.length > 0 && (
+        <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Property Sale History</h3>
+            {propertyData.saleHistory.length >= 2 && (
+              <div className="text-sm font-semibold" style={{color: COLORS.tealDark}}>
+                Avg. Growth: {fmtPct(market.avgPctPriceGrowthPerYear)} per year
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            {propertyData.saleHistory.map((sale, index) => (
+              <div key={index} className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{backgroundColor: COLORS.beige}}>
+                    <span className="text-sm font-semibold" style={{color: COLORS.navy}}>
+                      {propertyData.saleHistory.length - index}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="font-semibold text-gray-900">{fmtGBP(sale.price)}</div>
+                    <div className="text-sm text-gray-500">{sale.saleType || 'Sold'}</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="font-medium text-gray-900">
+                    {new Date(sale.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </div>
+                  {index < propertyData.saleHistory.length - 1 && (
+                    <div className="text-sm" style={{color: 
+                      sale.price > propertyData.saleHistory[index + 1].price ? '#16a34a' : '#ef4444'
+                    }}>
+                      {sale.price > propertyData.saleHistory[index + 1].price ? '+' : ''}
+                      {fmtGBP(sale.price - propertyData.saleHistory[index + 1].price)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ===== LAND REGISTRY DATA SECTION ===== */}
+      {landRegistryData?.success && landRegistryData?.data && (
+        <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Land Registry Data</h3>
+            <div className="text-sm text-gray-500">Official property sales data</div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-gray-200 p-4">
+              <div className="text-xs uppercase tracking-wider text-gray-500">Total Properties</div>
+              <div className="mt-1 text-xl font-semibold">{landRegistryData.data.statistics.totalProperties}</div>
+              <div className="mt-1 text-sm text-gray-500">in postcode {landRegistryData.data.postcode}</div>
+            </div>
+            
+            <div className="rounded-2xl border border-gray-200 p-4">
+              <div className="text-xs uppercase tracking-wider text-gray-500">Average Price</div>
+              <div className="mt-1 text-xl font-semibold">£{landRegistryData.data.statistics.averagePrice.toLocaleString()}</div>
+              <div className="mt-1 text-sm text-gray-500">based on sold properties</div>
+            </div>
+            
+            <div className="rounded-2xl border border-gray-200 p-4">
+              <div className="text-xs uppercase tracking-wider text-gray-500">Median Price</div>
+              <div className="mt-1 text-xl font-semibold">£{landRegistryData.data.statistics.medianPrice.toLocaleString()}</div>
+              <div className="mt-1 text-sm text-gray-500">typical property value</div>
+            </div>
+            
+            <div className="rounded-2xl border border-gray-200 p-4">
+              <div className="text-xs uppercase tracking-wider text-gray-500">Price Range</div>
+              <div className="mt-1 text-xl font-semibold">£{landRegistryData.data.statistics.minPrice.toLocaleString()}</div>
+              <div className="mt-1 text-sm text-gray-500">to £{landRegistryData.data.statistics.maxPrice.toLocaleString()}</div>
+            </div>
+          </div>
+
+          {/* Recent Sales */}
+          {landRegistryData.data.properties && landRegistryData.data.properties.length > 0 && (
+            <div className="mt-6">
+              <h4 className="text-md font-semibold mb-3">Recent Sales in Area</h4>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {landRegistryData.data.properties.slice(0, 5).map((property: any, index: number) => (
+                  <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <div className="font-medium">{property['PAON']} {property['Street']}</div>
+                      <div className="text-sm text-gray-500">{property['Date of Transfer']} • {property['Property Type']}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-semibold">£{parseInt(property['Price Paid']).toLocaleString()}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ===== 3) CUSTOM CRITERIA ===== */}
       <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -432,7 +576,7 @@ export const mockData = {
     avgPricePerSqmPostcodeListed: 4100,
     avgPricePerSqmPostcodeSold: 3800,
     avgPctPriceGrowthPerYear: 2.1,
-    avgPriceChangeSoldByPeriod: { "1m": -0.8, "3m": 0.6, "6m": 1.9, "1y": 2.1 },
+    avgPriceChangeSoldByPeriod: { "'20": 1.2, "'21": 3.5, "'22": 5.8, "'23": 2.4, "'24": 1.9 },
     timeOnMarketDays: 21,
     timeOnMarketPercentile: 35,
     roadSalesLastYear: 3,
@@ -511,5 +655,173 @@ if (typeof window !== 'undefined') {
 
 // ===================== Next.js Page Component ==================== //
 export default function ResultsPage() {
-  return <HomeLensReport data={mockData} />;
+  const [aiAnalysis, setAiAnalysis] = React.useState(null);
+  const [scoreData, setScoreData] = React.useState(null);
+  const [propertyHistory, setPropertyHistory] = React.useState(null);
+  const [propertyData, setPropertyData] = React.useState(null);
+  const [landRegistryData, setLandRegistryData] = React.useState(null);
+  const [yearlyPriceChanges, setYearlyPriceChanges] = React.useState(null);
+  const [hasRealPPDData, setHasRealPPDData] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    // Get AI analysis, score data, property history, and property data from localStorage
+    const savedAnalysis = localStorage.getItem('aiAnalysis');
+    const savedScoreData = localStorage.getItem('scoreData');
+    const savedPropertyHistory = localStorage.getItem('propertyHistory');
+    const savedPropertyData = localStorage.getItem('propertyData');
+    
+    if (savedAnalysis) {
+      try {
+        setAiAnalysis(JSON.parse(savedAnalysis));
+      } catch (error) {
+        console.error('Failed to parse AI analysis:', error);
+      }
+    }
+    
+    if (savedScoreData) {
+      try {
+        setScoreData(JSON.parse(savedScoreData));
+      } catch (error) {
+        console.error('Failed to parse score data:', error);
+      }
+    }
+    
+    if (savedPropertyHistory) {
+      try {
+        setPropertyHistory(JSON.parse(savedPropertyHistory));
+      } catch (error) {
+        console.error('Failed to parse property history:', error);
+      }
+    }
+    
+    if (savedPropertyData) {
+      try {
+        setPropertyData(JSON.parse(savedPropertyData));
+      } catch (error) {
+        console.error('Failed to parse property data:', error);
+      }
+    }
+    
+    // Load Land Registry data
+    const savedLandRegistryData = localStorage.getItem('landRegistryData');
+    if (savedLandRegistryData) {
+      try {
+        const parsedData = JSON.parse(savedLandRegistryData);
+        setLandRegistryData(parsedData);
+        console.log('🏛️ Land Registry data loaded:', parsedData.success);
+      } catch (error) {
+        console.error('Failed to parse Land Registry data:', error);
+      }
+    }
+    
+    // Load yearly price changes
+    const savedYearlyPriceChanges = localStorage.getItem('yearlyPriceChanges');
+    if (savedYearlyPriceChanges) {
+      try {
+        const parsedData = JSON.parse(savedYearlyPriceChanges);
+        setYearlyPriceChanges(parsedData);
+        console.log('📊 Yearly price changes loaded:', parsedData);
+        
+        // Check if we have real PPD data (not just estimates)
+        // Real data will have been logged as "Using real Land Registry yearly price changes"
+        // For now, we'll check if Land Registry data was successful
+        if (savedLandRegistryData) {
+          try {
+            const lrData = JSON.parse(savedLandRegistryData);
+            setHasRealPPDData(lrData.success && lrData.data?.yearlyTrends && Object.keys(lrData.data.yearlyTrends).length > 0);
+          } catch (e) {
+            setHasRealPPDData(false);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to parse yearly price changes:', error);
+      }
+    }
+    
+    setLoading(false);
+  }, []);
+
+  // Merge mock data with AI analysis and real scores
+  const reportData = React.useMemo(() => {
+    let data = { ...mockData };
+    
+    // Update with real property data if available
+    if (propertyData) {
+      data.overview = {
+        ...data.overview,
+        address: propertyData.address || data.overview?.address,
+        price: propertyData.currentPrice || propertyData.price || data.overview?.price,
+        bedrooms: propertyData.bedrooms || data.overview?.bedrooms,
+        bathrooms: propertyData.bathrooms || data.overview?.bathrooms,
+        propertyType: propertyData.propertyType || data.overview?.propertyType,
+        floorAreaSqm: propertyData.size || data.overview?.floorAreaSqm
+      };
+    }
+    
+    // Update with AI analysis
+    if (aiAnalysis) {
+      data.summary = [
+        {
+          title: "Positives",
+          items: Array.isArray(aiAnalysis.positives) ? aiAnalysis.positives : mockData.summary[0].items
+        },
+        {
+          title: "Things to consider", 
+          items: Array.isArray(aiAnalysis.thingsToConsider) ? aiAnalysis.thingsToConsider : mockData.summary[1].items
+        },
+        {
+          title: "Overall",
+          items: Array.isArray(aiAnalysis.overall) ? aiAnalysis.overall : (aiAnalysis.overall ? [aiAnalysis.overall] : mockData.summary[2].items)
+        }
+      ];
+    }
+    
+    // Update with real scores
+    if (scoreData) {
+      data.overview = {
+        ...data.overview,
+        overallScore: scoreData.overall || mockData.overview.overallScore
+      };
+    }
+    
+    // Update with real property growth data
+    if (propertyHistory && propertyHistory.hasHistory && propertyHistory.avgAnnualGrowth) {
+      data.market = {
+        ...data.market,
+        avgPctPriceGrowthPerYear: propertyHistory.avgAnnualGrowth
+      };
+    }
+    
+    // Update price per sqm with real calculation
+    if (data.overview?.price && data.overview?.floorAreaSqm) {
+      data.market = {
+        ...data.market,
+        pricePerSqm: Math.round(data.overview.price / data.overview.floorAreaSqm)
+      };
+    }
+    
+    // Update with real yearly price changes from Land Registry
+    if (yearlyPriceChanges) {
+      data.market = {
+        ...data.market,
+        avgPriceChangeSoldByPeriod: yearlyPriceChanges
+      };
+    }
+    
+    return data;
+  }, [aiAnalysis, scoreData, propertyHistory, propertyData, yearlyPriceChanges]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F3DFC1' }}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
+          <p className="text-lg" style={{ color: '#160F29' }}>Generating personalised analysis...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <HomeLensReport data={reportData} landRegistryData={landRegistryData} hasRealPPDData={hasRealPPDData} propertyData={propertyData} />;
 }

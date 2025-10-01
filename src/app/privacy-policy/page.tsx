@@ -38,13 +38,13 @@ export default function PrivacyPolicy() {
               <div>
                 <h3 className="text-xl font-semibold mb-2" style={{color: '#160F29', fontFamily: 'Satoshi, sans-serif'}}>2.1 Personal Information</h3>
                 <p className="leading-relaxed" style={{color: '#246A73', fontFamily: 'Satoshi, sans-serif'}}>
-                  When you use HomeLens, we may collect personal information such as your email address, name, and property preferences. This information is used to provide you with personalized property analysis and recommendations.
+                  When you use HomeLens, we may collect personal information such as your email address, name, and property preferences. This information is used to provide you with personalised property analysis and recommendations.
                 </p>
               </div>
               <div>
                 <h3 className="text-xl font-semibold mb-2" style={{color: '#160F29', fontFamily: 'Satoshi, sans-serif'}}>2.2 Property Data</h3>
                 <p className="leading-relaxed" style={{color: '#246A73', fontFamily: 'Satoshi, sans-serif'}}>
-                  We collect property URLs you provide for analysis, along with your preferences for property characteristics, location, and other criteria to generate personalized reports.
+                  We collect property URLs you provide for analysis, along with your preferences for property characteristics, location, and other criteria to generate personalised reports.
                 </p>
               </div>
               <div>
@@ -61,7 +61,7 @@ export default function PrivacyPolicy() {
             <ul className="space-y-2" style={{color: '#246A73', fontFamily: 'Satoshi, sans-serif'}}>
               <li className="flex items-start gap-2">
                 <span className="text-lg">•</span>
-                <span>To provide property analysis and personalized recommendations</span>
+                <span>To provide property analysis and personalised recommendations</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-lg">•</span>

@@ -83,7 +83,7 @@ function PropertyPreferencesContent() {
   const searchParams = useSearchParams();
 
   // State
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isAnalysing, setIsAnalysing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rightmoveUrl, setRightmoveUrl] = useState('');
   const [bedrooms, setBedrooms] = useState<string | undefined>(undefined);
@@ -133,7 +133,14 @@ function PropertyPreferencesContent() {
       return;
     }
     
-    setIsAnalyzing(true);
+    // Validate Rightmove URL format
+    const rightmovePattern = /^https?:\/\/(www\.)?rightmove\.co\.uk\/properties\/\d+/i;
+    if (!rightmovePattern.test(rightmoveUrl)) {
+      setError('Please enter a valid Rightmove URL (e.g., https://www.rightmove.co.uk/properties/123456789)');
+      return;
+    }
+    
+    setIsAnalysing(true);
     setError(null);
     
     const payload = {
@@ -157,7 +164,136 @@ function PropertyPreferencesContent() {
       },
     };
 
-    // Simply navigate to results page with mock data
+    try {
+      // We'll update this with scraped data after we get the history
+      let propertyData = {
+        address: "123 Abbey Lane, Sheffield S10",
+        price: 350000,
+        bedrooms: 3,
+        bathrooms: 2,
+        propertyType: "Semi-Detached",
+        size: 108,
+        description: "A beautiful property in a great location with modern features."
+      };
+
+      const marketMetrics = {
+        pricePerSqm: 3920,
+        avgPricePerSqmPostcodeSold: 3800,
+        avgPctPriceGrowthPerYear: 2.1,
+        timeOnMarketDays: 21,
+        roadSalesLastYear: 3,
+        onMarketCountForConfig: 2
+      };
+
+      const userPrefs = {
+        featuresImportance,
+        postcodeImportance,
+        bathroomsImportance,
+        timeOnMarketImportance,
+        preferredSpace,
+        timeOnMarket,
+        anythingElse: anythingElse.trim() || undefined
+      };
+
+      // Call the new combined analyze-property API
+      console.log('🔄 v4.0 - Calling combined analyze-property API...');
+      const analyzeResponse = await fetch('/api/analyze-property', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rightmoveUrl, preferences: userPrefs, anythingElse }),
+      });
+
+      console.log('Analyze Response status:', analyzeResponse.status);
+      const analyzeData = await analyzeResponse.json();
+      
+      if (!analyzeData.success) {
+        throw new Error(analyzeData.error || 'Failed to analyze property');
+      }
+
+      console.log('✅ Analysis Data:', analyzeData);
+
+      // Update property data with AI-extracted information
+      const enhancedPropertyData = analyzeData.propertyData;
+      if (enhancedPropertyData) {
+        // Update all property details with the AI-extracted data
+        propertyData.address = enhancedPropertyData.address || propertyData.address;
+        propertyData.price = enhancedPropertyData.currentPrice || propertyData.price;
+        propertyData.bedrooms = enhancedPropertyData.bedrooms || propertyData.bedrooms;
+        propertyData.bathrooms = enhancedPropertyData.bathrooms || propertyData.bathrooms;
+        propertyData.propertyType = enhancedPropertyData.propertyType || propertyData.propertyType;
+        propertyData.size = enhancedPropertyData.size || propertyData.size;
+        
+        // Add time on market data
+        propertyData.dateListedIso = enhancedPropertyData.dateListed || enhancedPropertyData.dateListedIso;
+        propertyData.daysOnMarket = enhancedPropertyData.daysOnMarket;
+        
+        console.log('🏠 Updated property data:', propertyData);
+        console.log('📅 Time on market data added:', {
+          dateListedIso: propertyData.dateListedIso,
+          daysOnMarket: propertyData.daysOnMarket
+        });
+      }
+
+      // Now call scoring API with the enhanced property data
+      console.log('Calling scoring API with enhanced property data...');
+      const scoreResponse = await fetch('/api/score-property', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          propertyData, 
+          marketMetrics, 
+          userPrefs, 
+          propertyHistory: {
+            currentPrice: enhancedPropertyData.currentPrice,
+            saleHistory: enhancedPropertyData.saleHistory,
+            avgAnnualGrowth: enhancedPropertyData.avgYearlyPriceGrowth ?? enhancedPropertyData.avgAnnualGrowth,
+            yearsOfData: enhancedPropertyData.yearsOfData,
+            hasHistory: enhancedPropertyData.saleHistory && enhancedPropertyData.saleHistory.length >= 2,
+            analysis: enhancedPropertyData.analysis
+          }
+        }),
+      });
+
+      console.log('Score Response status:', scoreResponse.status);
+      const scoreData = await scoreResponse.json();
+      console.log('Score Data:', scoreData);
+      
+      // Store all results
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('aiAnalysis', JSON.stringify(analyzeData.analysis));
+        localStorage.setItem('scoreData', JSON.stringify(scoreData.scores));
+        localStorage.setItem('scoreBreakdown', JSON.stringify(scoreData.breakdown));
+        localStorage.setItem('propertyData', JSON.stringify(enhancedPropertyData));
+        localStorage.setItem('propertyHistory', JSON.stringify({
+          currentPrice: enhancedPropertyData.currentPrice,
+          saleHistory: enhancedPropertyData.saleHistory,
+          avgAnnualGrowth: enhancedPropertyData.avgYearlyPriceGrowth ?? enhancedPropertyData.avgAnnualGrowth,
+          yearsOfData: enhancedPropertyData.yearsOfData,
+          hasHistory: enhancedPropertyData.saleHistory && enhancedPropertyData.saleHistory.length >= 2,
+          analysis: enhancedPropertyData.analysis
+        }));
+        
+        // Store Land Registry data if available
+        if (analyzeData.landRegistryData) {
+          localStorage.setItem('landRegistryData', JSON.stringify(analyzeData.landRegistryData));
+          console.log('🏛️ Land Registry data stored:', analyzeData.landRegistryData.success);
+        }
+        
+        // Store yearly price changes if available
+        if (analyzeData.yearlyPriceChanges) {
+          localStorage.setItem('yearlyPriceChanges', JSON.stringify(analyzeData.yearlyPriceChanges));
+          console.log('📊 Yearly price changes stored:', analyzeData.yearlyPriceChanges);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Analysis failed:', error);
+      // Continue to results page even if analysis fails
+    } finally {
+      setIsAnalysing(false);
+    }
+    
+    // Navigate to results page
     router.push('/results');
   };
 
@@ -192,7 +328,7 @@ function PropertyPreferencesContent() {
           <div className="space-y-2">
             <label className="text-sm text-gray-700">Rightmove URL</label>
             <input
-              type="url"
+              type="text"
               value={rightmoveUrl}
               onChange={(e) => setRightmoveUrl(e.target.value)}
               placeholder="https://www.rightmove.co.uk/properties/..."
@@ -406,12 +542,12 @@ function PropertyPreferencesContent() {
             className="flex-1 sm:flex-none px-6 py-3 rounded-xl bg-black text-white font-medium hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
             type="button"
             onClick={handleSubmit}
-            disabled={isAnalyzing}
+            disabled={isAnalysing}
           >
-            {isAnalyzing ? (
+            {isAnalysing ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                Analyzing...
+                Analysing...
               </>
             ) : (
               '→ Analyse Property'

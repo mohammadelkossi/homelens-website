@@ -473,7 +473,7 @@ function generateRecommendations(categories: {
 }, customPreferences?: string): string[] {
   const recommendations: string[] = [];
   
-  // Generate personalized recommendations based on custom preferences
+  // Generate personalised recommendations based on custom preferences
   if (customPreferences) {
     recommendations.push(`Based on your preferences: "${customPreferences.substring(0, 100)}${customPreferences.length > 100 ? '...' : ''}"`);
     

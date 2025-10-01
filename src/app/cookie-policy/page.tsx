@@ -66,7 +66,7 @@ export default function CookiePolicy() {
                 </p>
                 <div className="p-4 rounded-lg" style={{backgroundColor: '#F3DFC1'}}>
                   <p className="text-sm" style={{color: '#160F29', fontFamily: 'Satoshi, sans-serif'}}>
-                    <strong>Examples:</strong> Google Analytics, page view tracking, user behavior analysis
+                    <strong>Examples:</strong> Google Analytics, page view tracking, user behaviour analysis
                   </p>
                 </div>
               </div>
@@ -128,7 +128,7 @@ export default function CookiePolicy() {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-lg">•</span>
-                <span><strong>Vercel:</strong> Provides hosting and performance optimization</span>
+                <span><strong>Vercel:</strong> Provides hosting and performance optimisation</span>
               </li>
             </ul>
           </section>
@@ -145,7 +145,7 @@ export default function CookiePolicy() {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-lg">•</span>
-                <span>Some personalized features may not work correctly</span>
+                <span>Some personalised features may not work correctly</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-lg">•</span>
