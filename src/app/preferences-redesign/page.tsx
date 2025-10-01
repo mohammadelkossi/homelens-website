@@ -195,12 +195,34 @@ function PropertyPreferencesContent() {
         anythingElse: anythingElse.trim() || undefined
       };
 
+      // First scrape the Rightmove property for detailed data
+      console.log('🏠 Scraping Rightmove property...');
+      const scrapeResponse = await fetch('/api/scrape-rightmove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rightmoveUrl }),
+      });
+
+      let scrapedData = null;
+      if (scrapeResponse.ok) {
+        const scrapeResult = await scrapeResponse.json();
+        scrapedData = scrapeResult.data;
+        console.log('✅ Property scraped successfully:', scrapedData);
+      } else {
+        console.error('❌ Property scraping failed');
+      }
+
       // Call the new combined analyze-property API
       console.log('🔄 v4.0 - Calling combined analyze-property API...');
       const analyzeResponse = await fetch('/api/analyze-property', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rightmoveUrl, preferences: userPrefs, anythingElse }),
+        body: JSON.stringify({ 
+          rightmoveUrl, 
+          preferences: userPrefs, 
+          anythingElse,
+          scrapedData // Pass the scraped data to the analysis
+        }),
       });
 
       console.log('Analyze Response status:', analyzeResponse.status);
