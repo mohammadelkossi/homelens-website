@@ -90,7 +90,7 @@ function PropertyPreferencesContent() {
   const [bathrooms, setBathrooms] = useState<string | undefined>(undefined);
   const [propertyType, setPropertyType] = useState<string | undefined>(undefined);
 
-  const FEATURES = ["Garden", "Parking", "Garage", "New build", "South facing"];
+  const FEATURES = ["Garden", "Parking", "Garage", "New build"];
   const [features, setFeatures] = useState<Record<string, boolean>>(
     () => Object.fromEntries(FEATURES.map((f) => [f, false])) as Record<string, boolean>
   );
