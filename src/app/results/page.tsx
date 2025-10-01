@@ -515,7 +515,11 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">{c.label}</div>
-                  {c.valueText && <div className="text-sm text-gray-500">{c.valueText}</div>}
+                  {c.valueText && (
+                    <div className={`text-sm ${c.isBinary ? (c.matchScore === 100 ? 'text-green-600' : 'text-red-600') : 'text-gray-500'}`}>
+                      {c.valueText}
+                    </div>
+                  )}
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-gray-500">Importance</div>
@@ -524,7 +528,14 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
               </div>
               <div className="mt-3">
                 <Progress value={c.matchScore} />
-                <div className="mt-1 text-sm text-gray-600">Match: {Math.round(c.matchScore)}%</div>
+                <div className="mt-1 text-sm text-gray-600">
+                  Match: {Math.round(c.matchScore)}%
+                  {c.isBinary && (
+                    <span className={`ml-2 font-semibold ${c.matchScore === 100 ? 'text-green-600' : 'text-red-600'}`}>
+                      {c.matchScore === 100 ? '✓' : '✗'}
+                    </span>
+                  )}
+                </div>
                 {c.note && <div className="mt-2 text-sm text-gray-500">{c.note}</div>}
               </div>
             </div>
@@ -585,8 +596,10 @@ export const mockData = {
   },
   customCriteria: [
     { label: "Distance to preferred postcode", importance: 0.25, matchScore: 86, valueText: "2.3 km from SK8" },
-    { label: "Off-street parking", importance: 0.2, matchScore: 100, valueText: "Driveway + garage" },
-    { label: "Garden size", importance: 0.2, matchScore: 72, valueText: "Medium garden", note: "South-west facing" },
+    { label: "Garden", importance: 0.2, matchScore: 100, valueText: "Present", isBinary: true },
+    { label: "Parking", importance: 0.2, matchScore: 100, valueText: "Driveway + garage", isBinary: true },
+    { label: "Garage", importance: 0.15, matchScore: 100, valueText: "Present", isBinary: true },
+    { label: "New build", importance: 0.1, matchScore: 0, valueText: "Not present", isBinary: true },
     { label: "School proximity (Ofsted Good+)", importance: 0.2, matchScore: 64, valueText: "0.8 km to Highfield Primary" },
     { label: "Size", importance: 0.15, matchScore: 85, valueText: "108 sqm" },
     { label: "Commute time to city centre", importance: 0.15, matchScore: 58, valueText: "22 min drive at peak" },

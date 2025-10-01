@@ -30,21 +30,56 @@ function weighted_avg(values: number[], weights: number[], available_mask?: bool
   return values.reduce((sum, val, i) => sum + val * weights[i], 0);
 }
 
-function compute_preferences_index(user_prefs: any, property: any): number {
-  // This is a simplified version - you can expand this based on your actual preference logic
+async function analyze_binary_criteria(propertyDescription: string, userPrefs: any): Promise<any> {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/analyze-binary-criteria`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        propertyDescription,
+        userCriteria: userPrefs.featuresImportance || {}
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Binary criteria analysis failed: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    return result.binaryMatches || {};
+  } catch (error) {
+    console.error('Binary criteria analysis failed:', error);
+    return {};
+  }
+}
+
+function compute_preferences_index(user_prefs: any, property: any, binaryMatches: any = {}): number {
   let score = 0.5; // Base score
   
-  // Example preference matching (you can customize this)
   if (user_prefs.featuresImportance) {
     const features = user_prefs.featuresImportance;
     let featureScore = 0;
     let featureCount = 0;
     
-    // Match property features with user preferences
+    // Binary criteria (garden, parking, garage, new build)
+    const binaryCriteria = ['garden', 'parking', 'garage', 'new build'];
+    
     Object.entries(features).forEach(([feature, importance]) => {
-      if (typeof importance === 'number') {
-        // Simple scoring based on importance (you can make this more sophisticated)
-        featureScore += importance / 10;
+      if (typeof importance === 'number' && importance > 0) {
+        let matchScore = 0.5; // Default neutral score
+        
+        if (binaryCriteria.includes(feature.toLowerCase())) {
+          // Use binary match (100% or 0%)
+          const binaryMatch = binaryMatches[feature.toLowerCase()] || 0;
+          matchScore = binaryMatch / 100; // Convert to 0-1 scale
+        } else {
+          // For non-binary criteria, use importance as base score
+          matchScore = importance / 10;
+        }
+        
+        featureScore += matchScore * (importance / 10);
         featureCount++;
       }
     });
@@ -90,8 +125,12 @@ export async function POST(request: NextRequest) {
     const rolling_median_active_count = 3; // Mock data
     const postcode_turnover = 0.08; // Mock data
 
-    // Calculate P (preferences index)
-    const P = compute_preferences_index(userPrefs, propertyData);
+    // Analyze binary criteria using OpenAI
+    const binaryMatches = await analyze_binary_criteria(propertyData.description || '', userPrefs);
+    console.log('🎯 Binary criteria matches:', binaryMatches);
+
+    // Calculate P (preferences index) with binary matches
+    const P = compute_preferences_index(userPrefs, propertyData, binaryMatches);
 
     // Metric 1: Price per sqm analysis
     const ppsqm = ask_price / Math.max(living_area_sqm, 1);
@@ -167,7 +206,8 @@ export async function POST(request: NextRequest) {
         daysOnMarket: days_on_market,
         roadTurnover: theta_hat,
         activeComps: active_comp_count
-      }
+      },
+      binaryMatches: binaryMatches
     });
 
   } catch (error) {
