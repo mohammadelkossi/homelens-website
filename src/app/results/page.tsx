@@ -862,50 +862,50 @@ export default function ResultsPage() {
     const criteria = [];
     
     // 1. Distance to preferred postcode
-    if (userPreferences.postcodeImportance > 0) {
+    if (userPreferences.importance?.postcode > 0) {
       criteria.push({
         label: "Distance to preferred postcode",
-        importance: userPreferences.postcodeImportance / 10,
+        importance: userPreferences.importance.postcode / 10,
         matchScore: 86,
         valueText: "2.3 km from SK8"
       });
     }
     
     // 2. Size
-    if (userPreferences.spaceImportance > 0) {
+    if (userPreferences.importance?.space > 0) {
       criteria.push({
         label: "Size",
-        importance: userPreferences.spaceImportance / 10,
+        importance: userPreferences.importance.space / 10,
         matchScore: 85,
         valueText: "108 sqm"
       });
     }
     
     // 3. Number of Bedrooms
-    if (userPreferences.bedroomsImportance > 0) {
+    if (userPreferences.importance?.bedrooms > 0) {
       criteria.push({
         label: "Number of Bedrooms",
-        importance: userPreferences.bedroomsImportance / 10,
+        importance: userPreferences.importance.bedrooms / 10,
         matchScore: 90,
         valueText: "3 bedrooms"
       });
     }
     
     // 4. Number of Bathrooms
-    if (userPreferences.bathroomsImportance > 0) {
+    if (userPreferences.importance?.bathrooms > 0) {
       criteria.push({
         label: "Number of Bathrooms",
-        importance: userPreferences.bathroomsImportance / 10,
+        importance: userPreferences.importance.bathrooms / 10,
         matchScore: 85,
         valueText: "2 bathrooms"
       });
     }
     
     // 5. Property Type
-    if (userPreferences.propertyTypeImportance > 0) {
+    if (userPreferences.importance?.propertyType > 0) {
       criteria.push({
         label: "Property Type",
-        importance: userPreferences.propertyTypeImportance / 10,
+        importance: userPreferences.importance.propertyType / 10,
         matchScore: 80,
         valueText: "Semi-Detached"
       });
