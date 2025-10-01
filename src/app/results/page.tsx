@@ -763,14 +763,16 @@ export default function ResultsPage() {
   const [landRegistryData, setLandRegistryData] = React.useState(null);
   const [yearlyPriceChanges, setYearlyPriceChanges] = React.useState(null);
   const [hasRealPPDData, setHasRealPPDData] = React.useState(false);
+  const [userPreferences, setUserPreferences] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    // Get AI analysis, score data, property history, and property data from localStorage
+    // Get AI analysis, score data, property history, property data, and user preferences from localStorage
     const savedAnalysis = localStorage.getItem('aiAnalysis');
     const savedScoreData = localStorage.getItem('scoreData');
     const savedPropertyHistory = localStorage.getItem('propertyHistory');
     const savedPropertyData = localStorage.getItem('propertyData');
+    const savedUserPreferences = localStorage.getItem('userPreferences');
     
     if (savedAnalysis) {
       try {
@@ -801,6 +803,16 @@ export default function ResultsPage() {
         setPropertyData(JSON.parse(savedPropertyData));
       } catch (error) {
         console.error('Failed to parse property data:', error);
+      }
+    }
+    
+    if (savedUserPreferences) {
+      try {
+        const parsedData = JSON.parse(savedUserPreferences);
+        setUserPreferences(parsedData);
+        console.log('👤 User preferences loaded:', parsedData);
+      } catch (error) {
+        console.error('Failed to parse user preferences:', error);
       }
     }
     
@@ -843,9 +855,85 @@ export default function ResultsPage() {
     setLoading(false);
   }, []);
 
+  // Generate custom criteria from user preferences
+  const generateCustomCriteria = React.useMemo(() => {
+    if (!userPreferences) return mockData.customCriteria;
+    
+    const criteria = [];
+    
+    // 1. Distance to preferred postcode
+    if (userPreferences.postcodeImportance > 0) {
+      criteria.push({
+        label: "Distance to preferred postcode",
+        importance: userPreferences.postcodeImportance / 10,
+        matchScore: 86,
+        valueText: "2.3 km from SK8"
+      });
+    }
+    
+    // 2. Size
+    if (userPreferences.spaceImportance > 0) {
+      criteria.push({
+        label: "Size",
+        importance: userPreferences.spaceImportance / 10,
+        matchScore: 85,
+        valueText: "108 sqm"
+      });
+    }
+    
+    // 3. Number of Bedrooms
+    if (userPreferences.bedroomsImportance > 0) {
+      criteria.push({
+        label: "Number of Bedrooms",
+        importance: userPreferences.bedroomsImportance / 10,
+        matchScore: 90,
+        valueText: "3 bedrooms"
+      });
+    }
+    
+    // 4. Number of Bathrooms
+    if (userPreferences.bathroomsImportance > 0) {
+      criteria.push({
+        label: "Number of Bathrooms",
+        importance: userPreferences.bathroomsImportance / 10,
+        matchScore: 85,
+        valueText: "2 bathrooms"
+      });
+    }
+    
+    // 5. Property Type
+    if (userPreferences.propertyTypeImportance > 0) {
+      criteria.push({
+        label: "Property Type",
+        importance: userPreferences.propertyTypeImportance / 10,
+        matchScore: 80,
+        valueText: "Semi-Detached"
+      });
+    }
+    
+    // 6+. Additional criteria from "Anything Else" analysis
+    if (userPreferences.additionalCriteria && userPreferences.additionalCriteria.length > 0) {
+      userPreferences.additionalCriteria.forEach((additionalCriterion, index) => {
+        criteria.push({
+          label: additionalCriterion.label,
+          importance: 0.5, // Default importance for additional criteria
+          matchScore: additionalCriterion.type === 'binary' ? 100 : 75, // Default match scores
+          valueText: additionalCriterion.type === 'binary' ? "Present" : "Good match",
+          isBinary: additionalCriterion.type === 'binary',
+          description: additionalCriterion.description
+        });
+      });
+    }
+    
+    return criteria;
+  }, [userPreferences]);
+
   // Merge mock data with AI analysis and real scores
   const reportData = React.useMemo(() => {
     let data = { ...mockData };
+    
+    // Update custom criteria with real user preferences
+    data.customCriteria = generateCustomCriteria;
     
     // Update with real property data if available
     if (propertyData) {
@@ -911,7 +999,7 @@ export default function ResultsPage() {
     }
     
     return data;
-  }, [aiAnalysis, scoreData, propertyHistory, propertyData, yearlyPriceChanges]);
+  }, [aiAnalysis, scoreData, propertyHistory, propertyData, yearlyPriceChanges, generateCustomCriteria]);
 
   if (loading) {
     return (

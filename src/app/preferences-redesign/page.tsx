@@ -284,6 +284,35 @@ function PropertyPreferencesContent() {
           localStorage.setItem('yearlyPriceChanges', JSON.stringify(analyzeData.yearlyPriceChanges));
           console.log('📊 Yearly price changes stored:', analyzeData.yearlyPriceChanges);
         }
+        
+      // Analyze "Anything Else" for additional criteria
+      let additionalCriteria = [];
+      if (anythingElse && anythingElse.trim()) {
+        try {
+          const analyzeResponse = await fetch('/api/analyze-additional-criteria', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ anythingElse: anythingElse.trim() })
+          });
+          
+          if (analyzeResponse.ok) {
+            const result = await analyzeResponse.json();
+            additionalCriteria = result.additionalCriteria || [];
+            console.log('🔍 Additional criteria extracted:', additionalCriteria);
+          }
+        } catch (error) {
+          console.error('Failed to analyze additional criteria:', error);
+        }
+      }
+
+      // Store user preferences with additional criteria
+      const userPrefsWithAdditional = {
+        ...userPrefs,
+        additionalCriteria
+      };
+      
+      localStorage.setItem('userPreferences', JSON.stringify(userPrefsWithAdditional));
+      console.log('👤 User preferences stored:', userPrefsWithAdditional);
       }
       
     } catch (error) {
