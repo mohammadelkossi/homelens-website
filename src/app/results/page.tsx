@@ -543,7 +543,63 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
         </div>
       </section>
 
-      {/* ===== 4) SUMMARY / RECOMMENDATIONS ===== */}
+      {/* ===== 4) FUNDAMENTALS (BINARY CRITERIA) ===== */}
+      <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold">Fundamentals</h3>
+          <div className="text-sm text-gray-500">Essential features that matter to you</div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          {/* Left Column - Matched Criteria */}
+          <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-green-500"></div>
+              <h4 className="text-sm font-semibold text-green-800">Criteria Met</h4>
+            </div>
+            <div className="space-y-2">
+              {customCriteria
+                .filter(c => c.isBinary && c.matchScore === 100)
+                .map((c, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100">
+                      <span className="text-xs text-green-600">✓</span>
+                    </div>
+                    <span className="text-green-800">{c.label}</span>
+                  </div>
+                ))}
+              {customCriteria.filter(c => c.isBinary && c.matchScore === 100).length === 0 && (
+                <div className="text-sm text-green-600">No binary criteria matched</div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column - Unmatched Criteria */}
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-red-500"></div>
+              <h4 className="text-sm font-semibold text-red-800">Criteria Not Met</h4>
+            </div>
+            <div className="space-y-2">
+              {customCriteria
+                .filter(c => c.isBinary && c.matchScore === 0)
+                .map((c, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
+                      <span className="text-xs text-red-600">✗</span>
+                    </div>
+                    <span className="text-red-800">{c.label}</span>
+                  </div>
+                ))}
+              {customCriteria.filter(c => c.isBinary && c.matchScore === 0).length === 0 && (
+                <div className="text-sm text-red-600">All binary criteria matched</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== 5) SUMMARY / RECOMMENDATIONS ===== */}
       <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold">Summary & Recommendations</h3>
@@ -597,7 +653,7 @@ export const mockData = {
   customCriteria: [
     { label: "Distance to preferred postcode", importance: 0.25, matchScore: 86, valueText: "2.3 km from SK8" },
     { label: "Garden", importance: 0.2, matchScore: 100, valueText: "Present", isBinary: true },
-    { label: "Parking", importance: 0.2, matchScore: 100, valueText: "Driveway + garage", isBinary: true },
+    { label: "Parking", importance: 0.2, matchScore: 0, valueText: "Not present", isBinary: true },
     { label: "Garage", importance: 0.15, matchScore: 100, valueText: "Present", isBinary: true },
     { label: "New build", importance: 0.1, matchScore: 0, valueText: "Not present", isBinary: true },
     { label: "School proximity (Ofsted Good+)", importance: 0.2, matchScore: 64, valueText: "0.8 km to Highfield Primary" },
