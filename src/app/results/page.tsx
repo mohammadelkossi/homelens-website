@@ -561,11 +561,16 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
               {customCriteria
                 .filter(c => c.isBinary && c.matchScore === 100)
                 .map((c, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
-                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100">
-                      <span className="text-xs text-green-600">✓</span>
+                  <div key={i} className="flex items-center justify-between gap-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100">
+                        <span className="text-xs text-green-600">✓</span>
+                      </div>
+                      <span className="text-green-800">{c.label}</span>
                     </div>
-                    <span className="text-green-800">{c.label}</span>
+                    <span className="text-xs text-green-600 font-medium">
+                      {Math.round(c.importance * 100)}%
+                    </span>
                   </div>
                 ))}
               {customCriteria.filter(c => c.isBinary && c.matchScore === 100).length === 0 && (
@@ -584,11 +589,16 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
               {customCriteria
                 .filter(c => c.isBinary && c.matchScore === 0)
                 .map((c, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
-                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
-                      <span className="text-xs text-red-600">✗</span>
+                  <div key={i} className="flex items-center justify-between gap-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
+                        <span className="text-xs text-red-600">✗</span>
+                      </div>
+                      <span className="text-red-800">{c.label}</span>
                     </div>
-                    <span className="text-red-800">{c.label}</span>
+                    <span className="text-xs text-red-600 font-medium">
+                      {Math.round(c.importance * 100)}%
+                    </span>
                   </div>
                 ))}
               {customCriteria.filter(c => c.isBinary && c.matchScore === 0).length === 0 && (
