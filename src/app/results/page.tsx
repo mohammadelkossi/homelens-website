@@ -811,6 +811,7 @@ export default function ResultsPage() {
         const parsedData = JSON.parse(savedUserPreferences);
         setUserPreferences(parsedData);
         console.log('👤 User preferences loaded:', parsedData);
+        console.log('👤 Importance object:', parsedData.importance);
       } catch (error) {
         console.error('Failed to parse user preferences:', error);
       }
@@ -857,11 +858,16 @@ export default function ResultsPage() {
 
   // Generate custom criteria from user preferences
   const generateCustomCriteria = React.useMemo(() => {
-    if (!userPreferences) return mockData.customCriteria;
+    if (!userPreferences) {
+      console.log('🚫 No user preferences found, using mock data');
+      return mockData.customCriteria;
+    }
     
+    console.log('🔍 Generating custom criteria from preferences:', userPreferences);
     const criteria = [];
     
     // 1. Distance to preferred postcode
+    console.log('🔍 Checking postcode importance:', userPreferences.importance?.postcode);
     if (userPreferences.importance?.postcode > 0) {
       criteria.push({
         label: "Distance to preferred postcode",
@@ -872,6 +878,7 @@ export default function ResultsPage() {
     }
     
     // 2. Size
+    console.log('🔍 Checking space importance:', userPreferences.importance?.space);
     if (userPreferences.importance?.space > 0) {
       criteria.push({
         label: "Size",
@@ -882,6 +889,7 @@ export default function ResultsPage() {
     }
     
     // 3. Number of Bedrooms
+    console.log('🔍 Checking bedrooms importance:', userPreferences.importance?.bedrooms);
     if (userPreferences.importance?.bedrooms > 0) {
       criteria.push({
         label: "Number of Bedrooms",
@@ -892,6 +900,7 @@ export default function ResultsPage() {
     }
     
     // 4. Number of Bathrooms
+    console.log('🔍 Checking bathrooms importance:', userPreferences.importance?.bathrooms);
     if (userPreferences.importance?.bathrooms > 0) {
       criteria.push({
         label: "Number of Bathrooms",
@@ -902,6 +911,7 @@ export default function ResultsPage() {
     }
     
     // 5. Property Type
+    console.log('🔍 Checking propertyType importance:', userPreferences.importance?.propertyType);
     if (userPreferences.importance?.propertyType > 0) {
       criteria.push({
         label: "Property Type",
@@ -925,6 +935,7 @@ export default function ResultsPage() {
       });
     }
     
+    console.log('✅ Generated criteria:', criteria);
     return criteria;
   }, [userPreferences]);
 
