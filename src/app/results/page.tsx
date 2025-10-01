@@ -568,9 +568,7 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
                       </div>
                       <span className="text-green-800">{c.label}</span>
                     </div>
-                    <span className="text-xs text-green-600 font-medium">
-                      {Math.round(c.importance * 100)}%
-                    </span>
+                    <Pill>{Math.round(c.importance * 100)}%</Pill>
                   </div>
                 ))}
               {customCriteria.filter(c => c.isBinary && c.matchScore === 100).length === 0 && (
@@ -596,9 +594,7 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
                       </div>
                       <span className="text-red-800">{c.label}</span>
                     </div>
-                    <span className="text-xs text-red-600 font-medium">
-                      {Math.round(c.importance * 100)}%
-                    </span>
+                    <Pill>{Math.round(c.importance * 100)}%</Pill>
                   </div>
                 ))}
               {customCriteria.filter(c => c.isBinary && c.matchScore === 0).length === 0 && (
