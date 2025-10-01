@@ -561,14 +561,27 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
               {customCriteria
                 .filter(c => c.isBinary && c.matchScore === 100)
                 .map((c, i) => (
-                  <div key={i} className="flex items-center justify-between gap-2 text-sm">
-                    <div className="flex items-center gap-2">
+                  <div key={i} className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm">
                       <div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100">
                         <span className="text-xs text-green-600">✓</span>
                       </div>
                       <span className="text-green-800">{c.label}</span>
                     </div>
-                    <Pill>{Math.round(c.importance * 100)}%</Pill>
+                    <div className="ml-7">
+                      <div className="h-2 w-full rounded-full bg-gray-200">
+                        <div 
+                          className="h-2 rounded-full" 
+                          style={{ 
+                            width: `${Math.round(c.importance * 100)}%`, 
+                            backgroundColor: '#368F8B' 
+                          }} 
+                        />
+                      </div>
+                      <div className="mt-1 text-xs text-gray-600">
+                        {Math.round(c.importance * 100)}% importance
+                      </div>
+                    </div>
                   </div>
                 ))}
               {customCriteria.filter(c => c.isBinary && c.matchScore === 100).length === 0 && (
@@ -587,14 +600,27 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
               {customCriteria
                 .filter(c => c.isBinary && c.matchScore === 0)
                 .map((c, i) => (
-                  <div key={i} className="flex items-center justify-between gap-2 text-sm">
-                    <div className="flex items-center gap-2">
+                  <div key={i} className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm">
                       <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
                         <span className="text-xs text-red-600">✗</span>
                       </div>
                       <span className="text-red-800">{c.label}</span>
                     </div>
-                    <Pill>{Math.round(c.importance * 100)}%</Pill>
+                    <div className="ml-7">
+                      <div className="h-2 w-full rounded-full bg-gray-200">
+                        <div 
+                          className="h-2 rounded-full" 
+                          style={{ 
+                            width: `${Math.round(c.importance * 100)}%`, 
+                            backgroundColor: '#368F8B' 
+                          }} 
+                        />
+                      </div>
+                      <div className="mt-1 text-xs text-gray-600">
+                        {Math.round(c.importance * 100)}% importance
+                      </div>
+                    </div>
                   </div>
                 ))}
               {customCriteria.filter(c => c.isBinary && c.matchScore === 0).length === 0 && (
