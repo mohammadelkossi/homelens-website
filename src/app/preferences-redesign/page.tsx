@@ -285,6 +285,32 @@ function PropertyPreferencesContent() {
           console.log('📊 Yearly price changes stored:', analyzeData.yearlyPriceChanges);
         }
         
+      // Extract property features using OpenAI
+      let extractedFeatures = {};
+      let extractedPostcode = null;
+      if (propertyData?.description) {
+        try {
+          const featuresResponse = await fetch('/api/extract-property-features', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              propertyDescription: propertyData.description,
+              userFeatures: features
+            })
+          });
+          
+          if (featuresResponse.ok) {
+            const result = await featuresResponse.json();
+            extractedFeatures = result.features || {};
+            extractedPostcode = result.postcode;
+            console.log('🏠 Extracted property features:', extractedFeatures);
+            console.log('📍 Extracted postcode:', extractedPostcode);
+          }
+        } catch (error) {
+          console.error('Failed to extract property features:', error);
+        }
+      }
+
       // Analyze "Anything Else" for additional criteria
       let additionalCriteria = [];
       if (anythingElse && anythingElse.trim()) {
@@ -305,10 +331,12 @@ function PropertyPreferencesContent() {
         }
       }
 
-      // Store user preferences with additional criteria
+      // Store user preferences with additional criteria and extracted features
       const userPrefsWithAdditional = {
         ...userPrefs,
-        additionalCriteria
+        additionalCriteria,
+        extractedFeatures,
+        extractedPostcode
       };
       
       localStorage.setItem('userPreferences', JSON.stringify(userPrefsWithAdditional));

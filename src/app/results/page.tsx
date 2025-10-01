@@ -934,6 +934,29 @@ export default function ResultsPage() {
         });
       });
     }
+
+    // Add binary criteria (garden, parking, garage, new build) if user selected them
+    if (userPreferences.extractedFeatures) {
+      const binaryCriteria = [
+        { key: 'garden', label: 'Garden' },
+        { key: 'parking', label: 'Parking' },
+        { key: 'garage', label: 'Garage' },
+        { key: 'new build', label: 'New build' }
+      ];
+
+      binaryCriteria.forEach(({ key, label }) => {
+        if (userPreferences.featuresImportance && userPreferences.featuresImportance[label] > 0) {
+          const isPresent = userPreferences.extractedFeatures[key] === true;
+          criteria.push({
+            label: label,
+            importance: userPreferences.featuresImportance[label] / 10,
+            matchScore: isPresent ? 100 : 0,
+            valueText: isPresent ? "Present" : "Not present",
+            isBinary: true
+          });
+        }
+      });
+    }
     
     console.log('✅ Generated criteria:', criteria);
     return criteria;
