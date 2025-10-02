@@ -276,11 +276,6 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold" style={{color: COLORS.tealDark}}>HomeLens Report</h1>
-          {overview.address ? (
-            <p className="text-sm text-gray-600 mt-1">{overview.address}</p>
-          ) : (
-            <p className="text-sm text-red-600 mt-1">❌ Property address could not be extracted</p>
-          )}
         </div>
         <div className="flex gap-2">
           {overview.listingUrl && (
