@@ -197,13 +197,50 @@ function PropertyPreferencesContent() {
 
       // Perform comprehensive analysis
       console.log('🔍 Starting comprehensive property analysis...');
+      
+      // First, scrape the Rightmove URL to get listing text
+      let listingText = "No listing text available";
+      let rightmoveData = null;
+      
+      if (rightmoveUrl) {
+        try {
+          console.log('🕷️ Scraping Rightmove URL:', rightmoveUrl);
+          const scrapeResponse = await fetch('/api/scrape-rightmove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rightmoveUrl }),
+          });
+          
+          if (scrapeResponse.ok) {
+            const scrapeData = await scrapeResponse.json();
+            if (scrapeData.success && scrapeData.data) {
+              rightmoveData = scrapeData.data;
+              // Extract listing text from scraped data
+              listingText = scrapeData.data.description || scrapeData.data.summary || "No description available";
+              console.log('✅ Successfully scraped listing text');
+            }
+          }
+        } catch (error) {
+          console.error('❌ Failed to scrape Rightmove:', error);
+        }
+      }
+      
       const analysisResponse = await fetch('/api/comprehensive-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          rightmoveUrl, 
-          userPreferences: userPrefs, 
-          anythingElse
+          listingText,
+          url: rightmoveUrl,
+          toggles: userPrefs.features, // Pass selected binary features as toggles
+          userPreferences: userPrefs.importance, // Pass importance directly
+          anythingElse: userPrefs.anythingElse,
+          rightmove: rightmoveData || { // Use scraped data or mock data
+            firstSeen: "2024-01-01T00:00:00.000Z",
+            nowUtc: new Date().toISOString()
+          },
+          ppdPostcodeSeries: [], // Placeholder for PPD data
+          ppdPropertyTypeSeries: [], // Placeholder for PPD data
+          ukFallbackSeries: [] // Placeholder for fallback data
         }),
       });
 
