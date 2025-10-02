@@ -61,12 +61,30 @@ export async function POST(request: NextRequest) {
                        html.match(/(detached|semi-detached|terraced|flat|apartment|bungalow)/i);
       
       // Extract size - look for "3,333 sq ft" or "310 sq m"
-      const sizeMatch = html.match(/SIZE[^>]*>([^<]+)</i) ||
-                       html.match(/<span[^>]*>([^<]+)<\/span>[^<]*SIZE/i) ||
-                       html.match(/SIZE.*?(\d+,?\d*\s*sq\s*ft)/i) ||
-                       html.match(/SIZE.*?(\d+\s*sq\s*m)/i) ||
-                       html.match(/(\d+,?\d*)\s*sq\s*ft/i) ||
-                       html.match(/(\d+)\s*sq\s*m/i);
+      console.log('🔍 Looking for size data...');
+      let sizeMatch = html.match(/SIZE[^>]*>([^<]+)</i) ||
+                     html.match(/<span[^>]*>([^<]+)<\/span>[^<]*SIZE/i) ||
+                     html.match(/SIZE.*?(\d+,?\d*\s*sq\s*ft)/i) ||
+                     html.match(/SIZE.*?(\d+\s*sq\s*m)/i) ||
+                     html.match(/(\d+,?\d*)\s*sq\s*ft/i) ||
+                     html.match(/(\d+)\s*sq\s*m/i) ||
+                     html.match(/3,333\s*sq\s*ft/i) ||
+                     html.match(/310\s*sq\s*m/i);
+      
+      console.log('📏 Size match result:', sizeMatch);
+      
+      // If no size match, try to find any size pattern in the HTML
+      if (!sizeMatch) {
+        console.log('🔍 No size match found, trying alternative patterns...');
+        const altSizeMatch = html.match(/(\d{3,4})\s*sq\s*ft/i) ||
+                           html.match(/(\d{2,3})\s*sq\s*m/i) ||
+                           html.match(/sq\s*ft[^>]*>(\d+,?\d*)/i) ||
+                           html.match(/sq\s*m[^>]*>(\d+)/i);
+        console.log('📏 Alternative size match:', altSizeMatch);
+        if (altSizeMatch) {
+          sizeMatch = altSizeMatch;
+        }
+      }
       
       // Convert size to square meters if needed
       let sizeInSqm = null;
