@@ -558,7 +558,7 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
               <h4 className="text-sm font-semibold text-green-800">Criteria Met</h4>
             </div>
             <div className="space-y-2">
-              {generateBinaryCriteria.met?.map((c, i) => (
+              {binaryCriteria.met?.map((c, i) => (
                 <div key={i} className="space-y-2">
                   <div className="flex items-center gap-2 text-sm">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100">
@@ -582,7 +582,7 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
                   </div>
                 </div>
               ))}
-              {(!generateBinaryCriteria.met || generateBinaryCriteria.met.length === 0) && (
+              {(!binaryCriteria.met || binaryCriteria.met.length === 0) && (
                 <div className="text-sm text-green-600">No binary criteria matched</div>
               )}
             </div>
@@ -595,7 +595,7 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
               <h4 className="text-sm font-semibold text-red-800">Criteria Not Met</h4>
             </div>
             <div className="space-y-2">
-              {generateBinaryCriteria.notMet?.map((c, i) => (
+              {binaryCriteria.notMet?.map((c, i) => (
                 <div key={i} className="space-y-2">
                   <div className="flex items-center gap-2 text-sm">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
@@ -619,7 +619,7 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
                   </div>
                 </div>
               ))}
-              {(!generateBinaryCriteria.notMet || generateBinaryCriteria.notMet.length === 0) && (
+              {(!binaryCriteria.notMet || binaryCriteria.notMet.length === 0) && (
                 <div className="text-sm text-red-600">All binary criteria matched</div>
               )}
             </div>
@@ -966,6 +966,9 @@ export default function ResultsPage() {
     
     return { met, notMet };
   }, [aiAnalysis]);
+
+  // Generate binary criteria for display (moved before JSX)
+  const binaryCriteria = generateBinaryCriteria;
 
   // Merge mock data with AI analysis and real scores
   const reportData = React.useMemo(() => {
