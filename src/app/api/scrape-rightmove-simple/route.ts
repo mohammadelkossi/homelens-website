@@ -205,6 +205,73 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // If size is still missing and we have a floor plan, try AI calculation from room dimensions
+    if ((!extractedData.size || !extractedData.sizeInSqm) && html.includes('floorplan')) {
+      console.log('🧮 Size still missing, attempting AI calculation from floor plan room dimensions...');
+      
+      const floorplanCalculationPrompt = `
+You are a property size calculation expert. Analyze this Rightmove property listing HTML to find room dimensions in floor plans or property descriptions, then calculate the total property size.
+
+${html.substring(0, 25000)} // Limit HTML to first 25k chars
+
+INSTRUCTIONS:
+1. Look for room dimensions in the HTML (e.g., "7m x 3m", "12ft x 8ft", "4.5m x 2.5m")
+2. Calculate the area of each room (length × width)
+3. Add up all room areas to get total property size
+4. Convert to both square meters and square feet
+5. Return ONLY a JSON object with this structure:
+
+{
+  "totalSizeSqm": <number>,
+  "totalSizeSqft": <number>,
+  "roomBreakdown": [
+    {"room": "<room name>", "dimensions": "<dimensions>", "areaSqm": <number>}
+  ],
+  "calculationMethod": "<how you calculated it>"
+}
+
+If no room dimensions are found, return:
+{
+  "totalSizeSqm": null,
+  "totalSizeSqft": null,
+  "roomBreakdown": [],
+  "calculationMethod": "No room dimensions found in floor plan or description"
+}
+
+Be precise with calculations and only use dimensions that are clearly stated in the HTML.
+`;
+
+      try {
+        const floorplanCompletion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: "You are a property size calculation expert. Calculate total property size from room dimensions. Return only valid JSON."
+            },
+            {
+              role: "user",
+              content: floorplanCalculationPrompt
+            }
+          ],
+          temperature: 0.1,
+          max_tokens: 800,
+          response_format: { type: "json_object" },
+        });
+
+        const floorplanData = JSON.parse(floorplanCompletion.choices[0]?.message?.content || '{}');
+        console.log('🧮 AI floor plan calculation result:', floorplanData);
+        
+        if (floorplanData.totalSizeSqm && floorplanData.totalSizeSqft) {
+          extractedData.size = `${floorplanData.totalSizeSqft.toLocaleString()} sq ft`;
+          extractedData.sizeInSqm = Math.round(floorplanData.totalSizeSqm);
+          console.log('🧮 Calculated size from room dimensions:', extractedData.size);
+        }
+      } catch (error) {
+        console.log('❌ AI floor plan calculation failed:', error);
+      }
+    }
+
     // Use OpenAI API to extract any missing property details from HTML
     console.log('🤖 Using OpenAI API to extract missing property details...');
     
