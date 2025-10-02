@@ -198,36 +198,20 @@ function PropertyPreferencesContent() {
       // Perform comprehensive analysis
       console.log('🔍 Starting comprehensive property analysis...');
       
-      // First, scrape the Rightmove URL to get listing text
+      // Use direct listing text for testing (no scraper)
       let listingText = "No listing text available";
       let rightmoveData = null;
       
       if (rightmoveUrl) {
-        try {
-          console.log('🕷️ Scraping Rightmove URL:', rightmoveUrl);
-          const scrapeResponse = await fetch('/api/scrape-rightmove', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ rightmoveUrl }),
-          });
-          
-          if (scrapeResponse.ok) {
-            const scrapeData = await scrapeResponse.json();
-            console.log('🕷️ Scrape response:', scrapeData);
-            if (scrapeData.success && scrapeData.data) {
-              rightmoveData = scrapeData.data;
-              // Extract listing text from scraped data
-              listingText = scrapeData.data.description || scrapeData.data.summary || "No description available";
-              console.log('✅ Successfully scraped listing text:', listingText.substring(0, 200) + '...');
-            } else {
-              console.error('❌ Scraping failed:', scrapeData.error);
-            }
-          } else {
-            console.error('❌ Scrape request failed:', scrapeResponse.status);
-          }
-        } catch (error) {
-          console.error('❌ Failed to scrape Rightmove:', error);
-        }
+        // For testing, use a sample property description
+        listingText = `Beautiful 3 bedroom semi-detached house for sale in Manchester. 
+        Property features: 3 bedrooms, 2 bathrooms, garden, parking space, garage. 
+        Modern kitchen with integrated appliances. Spacious living room with bay window. 
+        Master bedroom with en-suite. Close to local amenities and transport links. 
+        Property type: Semi-Detached. Price: £250,000. 
+        Address: 123 Main Street, Manchester, M1 1AA. 
+        Built in 2015. Energy rating: C.`;
+        console.log('📝 Using sample listing text for testing');
       }
       
       const analysisResponse = await fetch('/api/comprehensive-analysis', {
