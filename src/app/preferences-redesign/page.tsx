@@ -195,175 +195,37 @@ function PropertyPreferencesContent() {
         anythingElse: anythingElse.trim() || undefined
       };
 
-      // First scrape the Rightmove property for detailed data
-      console.log('🏠 Scraping Rightmove property...');
-      const scrapeResponse = await fetch('/api/scrape-rightmove', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rightmoveUrl }),
-      });
-
-      let scrapedData = null;
-      if (scrapeResponse.ok) {
-        const scrapeResult = await scrapeResponse.json();
-        scrapedData = scrapeResult.data;
-        console.log('✅ Property scraped successfully:', scrapedData);
-      } else {
-        console.error('❌ Property scraping failed');
-      }
-
-      // Call the new combined analyze-property API
-      console.log('🔄 v4.0 - Calling combined analyze-property API...');
-      const analyzeResponse = await fetch('/api/analyze-property', {
+      // Perform comprehensive analysis
+      console.log('🔍 Starting comprehensive property analysis...');
+      const analysisResponse = await fetch('/api/comprehensive-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           rightmoveUrl, 
-          preferences: userPrefs, 
-          anythingElse,
-          scrapedData // Pass the scraped data to the analysis
+          userPreferences: userPrefs, 
+          anythingElse
         }),
       });
 
-      console.log('Analyze Response status:', analyzeResponse.status);
-      const analyzeData = await analyzeResponse.json();
+      console.log('Analysis Response status:', analysisResponse.status);
+      const analysisData = await analysisResponse.json();
       
-      if (!analyzeData.success) {
-        throw new Error(analyzeData.error || 'Failed to analyze property');
+      if (!analysisData.success) {
+        throw new Error(analysisData.error || 'Analysis failed');
       }
 
-      console.log('✅ Analysis Data:', analyzeData);
-
-      // Update property data with AI-extracted information
-      const enhancedPropertyData = analyzeData.propertyData;
-      if (enhancedPropertyData) {
-        // Update all property details with the AI-extracted data
-        propertyData.address = enhancedPropertyData.address || propertyData.address;
-        propertyData.price = enhancedPropertyData.currentPrice || propertyData.price;
-        propertyData.bedrooms = enhancedPropertyData.bedrooms || propertyData.bedrooms;
-        propertyData.bathrooms = enhancedPropertyData.bathrooms || propertyData.bathrooms;
-        propertyData.propertyType = enhancedPropertyData.propertyType || propertyData.propertyType;
-        propertyData.size = enhancedPropertyData.size || propertyData.size;
-        
-        // Add time on market data
-        propertyData.dateListedIso = enhancedPropertyData.dateListed || enhancedPropertyData.dateListedIso;
-        propertyData.daysOnMarket = enhancedPropertyData.daysOnMarket;
-        
-        console.log('🏠 Updated property data:', propertyData);
-        console.log('📅 Time on market data added:', {
-          dateListedIso: propertyData.dateListedIso,
-          daysOnMarket: propertyData.daysOnMarket
-        });
-      }
-
-      // Now call scoring API with the enhanced property data
-      console.log('Calling scoring API with enhanced property data...');
-      const scoreResponse = await fetch('/api/score-property', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          propertyData, 
-          marketMetrics, 
-          userPrefs, 
-          propertyHistory: {
-            currentPrice: enhancedPropertyData.currentPrice,
-            saleHistory: enhancedPropertyData.saleHistory,
-            avgAnnualGrowth: enhancedPropertyData.avgYearlyPriceGrowth ?? enhancedPropertyData.avgAnnualGrowth,
-            yearsOfData: enhancedPropertyData.yearsOfData,
-            hasHistory: enhancedPropertyData.saleHistory && enhancedPropertyData.saleHistory.length >= 2,
-            analysis: enhancedPropertyData.analysis
-          }
-        }),
-      });
-
-      console.log('Score Response status:', scoreResponse.status);
-      const scoreData = await scoreResponse.json();
-      console.log('Score Data:', scoreData);
+      console.log('✅ Comprehensive analysis completed successfully');
+      console.log('📊 Analysis result:', analysisData.analysis);
       
-      // Store all results
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('aiAnalysis', JSON.stringify(analyzeData.analysis));
-        localStorage.setItem('scoreData', JSON.stringify(scoreData.scores));
-        localStorage.setItem('scoreBreakdown', JSON.stringify(scoreData.breakdown));
-        localStorage.setItem('propertyData', JSON.stringify(enhancedPropertyData));
-        localStorage.setItem('propertyHistory', JSON.stringify({
-          currentPrice: enhancedPropertyData.currentPrice,
-          saleHistory: enhancedPropertyData.saleHistory,
-          avgAnnualGrowth: enhancedPropertyData.avgYearlyPriceGrowth ?? enhancedPropertyData.avgAnnualGrowth,
-          yearsOfData: enhancedPropertyData.yearsOfData,
-          hasHistory: enhancedPropertyData.saleHistory && enhancedPropertyData.saleHistory.length >= 2,
-          analysis: enhancedPropertyData.analysis
-        }));
-        
-        // Store Land Registry data if available
-        if (analyzeData.landRegistryData) {
-          localStorage.setItem('landRegistryData', JSON.stringify(analyzeData.landRegistryData));
-          console.log('🏛️ Land Registry data stored:', analyzeData.landRegistryData.success);
-        }
-        
-        // Store yearly price changes if available
-        if (analyzeData.yearlyPriceChanges) {
-          localStorage.setItem('yearlyPriceChanges', JSON.stringify(analyzeData.yearlyPriceChanges));
-          console.log('📊 Yearly price changes stored:', analyzeData.yearlyPriceChanges);
-        }
-        
-      // Extract property features using OpenAI
-      let extractedFeatures = {};
-      let extractedPostcode = null;
-      if (propertyData?.description) {
-        try {
-          const featuresResponse = await fetch('/api/extract-property-features', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              propertyDescription: propertyData.description,
-              userFeatures: features
-            })
-          });
-          
-          if (featuresResponse.ok) {
-            const result = await featuresResponse.json();
-            extractedFeatures = result.features || {};
-            extractedPostcode = result.postcode;
-            console.log('🏠 Extracted property features:', extractedFeatures);
-            console.log('📍 Extracted postcode:', extractedPostcode);
-          }
-        } catch (error) {
-          console.error('Failed to extract property features:', error);
-        }
-      }
-
-      // Analyze "Anything Else" for additional criteria
-      let additionalCriteria = [];
-      if (anythingElse && anythingElse.trim()) {
-        try {
-          const analyzeResponse = await fetch('/api/analyze-additional-criteria', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ anythingElse: anythingElse.trim() })
-          });
-          
-          if (analyzeResponse.ok) {
-            const result = await analyzeResponse.json();
-            additionalCriteria = result.additionalCriteria || [];
-            console.log('🔍 Additional criteria extracted:', additionalCriteria);
-          }
-        } catch (error) {
-          console.error('Failed to analyze additional criteria:', error);
-        }
-      }
-
-      // Store user preferences with additional criteria and extracted features
-      const userPrefsWithAdditional = {
-        ...userPrefs,
-        additionalCriteria,
-        extractedFeatures,
-        extractedPostcode
-      };
+      // Store the comprehensive analysis data
+      localStorage.setItem('comprehensiveAnalysis', JSON.stringify(analysisData.analysis));
+      localStorage.setItem('userPreferences', JSON.stringify(analysisData.analysis.userPreferences));
       
-      localStorage.setItem('userPreferences', JSON.stringify(userPrefsWithAdditional));
-      console.log('👤 User preferences stored:', userPrefsWithAdditional);
-      }
+      console.log('💾 Comprehensive analysis data stored in localStorage');
+
+      // Navigate to results page
+      console.log('🚀 Navigating to results page...');
+      router.push('/results');
       
     } catch (error) {
       console.error('Analysis failed:', error);

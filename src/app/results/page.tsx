@@ -767,42 +767,17 @@ export default function ResultsPage() {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    // Get AI analysis, score data, property history, property data, and user preferences from localStorage
-    const savedAnalysis = localStorage.getItem('aiAnalysis');
-    const savedScoreData = localStorage.getItem('scoreData');
-    const savedPropertyHistory = localStorage.getItem('propertyHistory');
-    const savedPropertyData = localStorage.getItem('propertyData');
+    // Get comprehensive analysis data and user preferences from localStorage
+    const savedComprehensiveAnalysis = localStorage.getItem('comprehensiveAnalysis');
     const savedUserPreferences = localStorage.getItem('userPreferences');
     
-    if (savedAnalysis) {
+    if (savedComprehensiveAnalysis) {
       try {
-        setAiAnalysis(JSON.parse(savedAnalysis));
+        const analysisData = JSON.parse(savedComprehensiveAnalysis);
+        setAiAnalysis(analysisData);
+        console.log('📊 Comprehensive analysis loaded:', analysisData);
       } catch (error) {
-        console.error('Failed to parse AI analysis:', error);
-      }
-    }
-    
-    if (savedScoreData) {
-      try {
-        setScoreData(JSON.parse(savedScoreData));
-      } catch (error) {
-        console.error('Failed to parse score data:', error);
-      }
-    }
-    
-    if (savedPropertyHistory) {
-      try {
-        setPropertyHistory(JSON.parse(savedPropertyHistory));
-      } catch (error) {
-        console.error('Failed to parse property history:', error);
-      }
-    }
-    
-    if (savedPropertyData) {
-      try {
-        setPropertyData(JSON.parse(savedPropertyData));
-      } catch (error) {
-        console.error('Failed to parse property data:', error);
+        console.error('Failed to parse comprehensive analysis:', error);
       }
     }
     
@@ -811,7 +786,6 @@ export default function ResultsPage() {
         const parsedData = JSON.parse(savedUserPreferences);
         setUserPreferences(parsedData);
         console.log('👤 User preferences loaded:', parsedData);
-        console.log('👤 Importance object:', parsedData.importance);
       } catch (error) {
         console.error('Failed to parse user preferences:', error);
       }
@@ -856,74 +830,69 @@ export default function ResultsPage() {
     setLoading(false);
   }, []);
 
-  // Generate custom criteria from user preferences
+  // Generate custom criteria from comprehensive analysis
   const generateCustomCriteria = React.useMemo(() => {
-    if (!userPreferences) {
-      console.log('🚫 No user preferences found, using mock data');
+    if (!aiAnalysis || !userPreferences) {
+      console.log('🚫 No analysis or preferences found, using mock data');
       return mockData.customCriteria;
     }
     
-    console.log('🔍 Generating custom criteria from preferences:', userPreferences);
+    console.log('🔍 Generating custom criteria from comprehensive analysis:', aiAnalysis);
     const criteria = [];
     
     // 1. Distance to preferred postcode
-    console.log('🔍 Checking postcode importance:', userPreferences.importance?.postcode);
-    if (userPreferences.importance?.postcode > 0) {
+    if (userPreferences.postcode > 0) {
       criteria.push({
         label: "Distance to preferred postcode",
-        importance: userPreferences.importance.postcode / 10,
+        importance: userPreferences.postcode / 10,
         matchScore: 86,
         valueText: "2.3 km from SK8"
       });
     }
     
     // 2. Size
-    console.log('🔍 Checking space importance:', userPreferences.importance?.space);
-    if (userPreferences.importance?.space > 0) {
+    if (userPreferences.space > 0) {
       criteria.push({
         label: "Size",
-        importance: userPreferences.importance.space / 10,
+        importance: userPreferences.space / 10,
         matchScore: 85,
         valueText: "108 sqm"
       });
     }
     
     // 3. Number of Bedrooms
-    console.log('🔍 Checking bedrooms importance:', userPreferences.importance?.bedrooms);
-    if (userPreferences.importance?.bedrooms > 0) {
+    if (userPreferences.bedrooms > 0) {
       criteria.push({
         label: "Number of Bedrooms",
-        importance: userPreferences.importance.bedrooms / 10,
+        importance: userPreferences.bedrooms / 10,
         matchScore: 90,
         valueText: "3 bedrooms"
       });
     }
     
     // 4. Number of Bathrooms
-    console.log('🔍 Checking bathrooms importance:', userPreferences.importance?.bathrooms);
-    if (userPreferences.importance?.bathrooms > 0) {
+    if (userPreferences.bathrooms > 0) {
       criteria.push({
         label: "Number of Bathrooms",
-        importance: userPreferences.importance.bathrooms / 10,
+        importance: userPreferences.bathrooms / 10,
         matchScore: 85,
         valueText: "2 bathrooms"
       });
     }
     
     // 5. Property Type
-    console.log('🔍 Checking propertyType importance:', userPreferences.importance?.propertyType);
-    if (userPreferences.importance?.propertyType > 0) {
+    if (userPreferences.propertyType > 0) {
       criteria.push({
         label: "Property Type",
-        importance: userPreferences.importance.propertyType / 10,
+        importance: userPreferences.propertyType / 10,
         matchScore: 80,
         valueText: "Semi-Detached"
       });
     }
     
     // 6+. Additional criteria from "Anything Else" analysis
-    if (userPreferences.additionalCriteria && userPreferences.additionalCriteria.length > 0) {
-      userPreferences.additionalCriteria.forEach((additionalCriterion, index) => {
+    if (aiAnalysis.additionalCriteria && aiAnalysis.additionalCriteria.length > 0) {
+      aiAnalysis.additionalCriteria.forEach((additionalCriterion, index) => {
         criteria.push({
           label: additionalCriterion.label,
           importance: 0.5, // Default importance for additional criteria
@@ -935,21 +904,21 @@ export default function ResultsPage() {
       });
     }
 
-    // Add binary criteria (garden, parking, garage, new build) if user selected them
-    if (userPreferences.extractedFeatures) {
+    // Add binary criteria (parking, garage, driveway, new build) if user selected them
+    if (aiAnalysis.binaryFeatures && userPreferences.features) {
       const binaryCriteria = [
-        { key: 'garden', label: 'Garden' },
         { key: 'parking', label: 'Parking' },
         { key: 'garage', label: 'Garage' },
-        { key: 'new build', label: 'New build' }
+        { key: 'driveway', label: 'Driveway' },
+        { key: 'newBuild', label: 'New build' }
       ];
 
       binaryCriteria.forEach(({ key, label }) => {
-        if (userPreferences.featuresImportance && userPreferences.featuresImportance[label] > 0) {
-          const isPresent = userPreferences.extractedFeatures[key] === true;
+        if (userPreferences.features[label] > 0) {
+          const isPresent = aiAnalysis.binaryFeatures[key] === true;
           criteria.push({
             label: label,
-            importance: userPreferences.featuresImportance[label] / 10,
+            importance: userPreferences.features[label] / 10,
             matchScore: isPresent ? 100 : 0,
             valueText: isPresent ? "Present" : "Not present",
             isBinary: true
@@ -960,7 +929,7 @@ export default function ResultsPage() {
     
     console.log('✅ Generated criteria:', criteria);
     return criteria;
-  }, [userPreferences]);
+  }, [aiAnalysis, userPreferences]);
 
   // Merge mock data with AI analysis and real scores
   const reportData = React.useMemo(() => {
