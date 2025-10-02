@@ -13,7 +13,11 @@ export async function POST(request: NextRequest) {
       url,
       toggles,
       userPreferences,
-      anythingElse
+      anythingElse,
+      rightmove,
+      ppdPostcodeSeries,
+      ppdPropertyTypeSeries,
+      ukFallbackSeries
     } = body;
 
     if (!listingText) {
@@ -22,8 +26,6 @@ export async function POST(request: NextRequest) {
         error: 'Listing text is required'
       });
     }
-
-    console.log('🔍 Starting comprehensive property analysis...');
 
     // Step 1: Extract basic property information
     const basicInfoPrompt = `
@@ -72,6 +74,23 @@ Guidelines:
     });
 
     const basicInfo = JSON.parse(basicInfoCompletion.choices[0]?.message?.content || '{}');
+    
+    // Calculate time on market
+    let firstListedAt = null;
+    let timeOnMarketDays = null;
+    
+    if (rightmove?.firstSeen) {
+      firstListedAt = rightmove.firstSeen;
+      if (rightmove.nowUtc) {
+        const firstSeenDate = new Date(rightmove.firstSeen);
+        const nowDate = new Date(rightmove.nowUtc);
+        timeOnMarketDays = Math.floor((nowDate - firstSeenDate) / (1000 * 60 * 60 * 24));
+      }
+    }
+    
+    // Add time on market to basic info
+    basicInfo.firstListedAt = firstListedAt;
+    basicInfo.timeOnMarketDays = timeOnMarketDays;
 
     // Step 2: Analyze binary features only if user toggled them on
     let binaryFeatures = {
@@ -196,7 +215,82 @@ Guidelines:
       }
     }
 
-    // Step 4: Compile final analysis with exact JSON structure
+    // Step 4: Process market graphs
+    let marketGraphs = {
+      postcode: null,
+      propertyTypeNormalized: null,
+      series: {
+        postcodeSeries: [],
+        propertyTypeSeries: []
+      },
+      source: "ppd",
+      fallbackUsed: false,
+      fallbackReason: null,
+      chartHint: {
+        x: "month",
+        y: "avgPriceGBP",
+        yFormat: "£,.0f",
+        title: "Average Sold Price (last 5 years)"
+      }
+    };
+
+    // Normalize property type
+    if (basicInfo.propertyType) {
+      const normalizedType = basicInfo.propertyType.toLowerCase();
+      if (normalizedType.includes('detached') && !normalizedType.includes('semi')) {
+        marketGraphs.propertyTypeNormalized = 'detached';
+      } else if (normalizedType.includes('semi-detached')) {
+        marketGraphs.propertyTypeNormalized = 'semi-detached';
+      } else if (normalizedType.includes('terraced')) {
+        marketGraphs.propertyTypeNormalized = 'terraced';
+      } else if (normalizedType.includes('flat') || normalizedType.includes('apartment')) {
+        marketGraphs.propertyTypeNormalized = 'flat';
+      } else if (normalizedType.includes('bungalow')) {
+        marketGraphs.propertyTypeNormalized = 'bungalow';
+      } else if (normalizedType.includes('maisonette')) {
+        marketGraphs.propertyTypeNormalized = 'maisonette';
+      } else {
+        marketGraphs.propertyTypeNormalized = 'other';
+      }
+    }
+
+    // Check if PPD data is available and valid
+    const hasValidPPD = ppdPostcodeSeries && ppdPropertyTypeSeries && 
+                       ppdPostcodeSeries.length > 6 && ppdPropertyTypeSeries.length > 6;
+
+    if (hasValidPPD) {
+      marketGraphs.series.postcodeSeries = ppdPostcodeSeries;
+      marketGraphs.series.propertyTypeSeries = ppdPropertyTypeSeries;
+    } else {
+      // Use fallback data
+      marketGraphs.series.postcodeSeries = ukFallbackSeries || [];
+      marketGraphs.series.propertyTypeSeries = ukFallbackSeries || [];
+      marketGraphs.fallbackUsed = true;
+      marketGraphs.fallbackReason = !ppdPostcodeSeries || !ppdPropertyTypeSeries ? 
+        'PPD data missing' : 
+        (ppdPostcodeSeries.length <= 6 || ppdPropertyTypeSeries.length <= 6 ? 
+          'PPD data insufficient' : 'PPD data errored');
+    }
+
+    // Step 5: Calculate diagnostics
+    const missing = [];
+    const notes = [];
+    let confidence = 1.0;
+
+    if (!basicInfo.propertyAddress) missing.push('propertyAddress');
+    if (!basicInfo.listingPrice) missing.push('listingPrice');
+    if (!basicInfo.area) missing.push('area');
+    if (!basicInfo.floorAreaSqm) missing.push('floorAreaSqm');
+    if (!basicInfo.numberOfBedrooms) missing.push('numberOfBedrooms');
+    if (!basicInfo.numberOfBathrooms) missing.push('numberOfBathrooms');
+    if (!basicInfo.propertyType) missing.push('propertyType');
+
+    confidence = 1.0 - (missing.length / 7);
+    if (marketGraphs.fallbackUsed) {
+      notes.push('Using fallback market data');
+    }
+
+    // Step 6: Compile final analysis with exact JSON structure
     const analysisResult = {
       success: true,
       timestamp: new Date().toISOString(),
@@ -205,7 +299,13 @@ Guidelines:
         basicInfo,
         binaryFeatures,
         additionalCriteria,
-        userPreferences: userPreferences || null
+        userPreferences: userPreferences || null,
+        marketGraphs,
+        diagnostics: {
+          confidence,
+          missing,
+          notes
+        }
       }
     };
 
