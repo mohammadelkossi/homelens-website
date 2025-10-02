@@ -280,25 +280,32 @@ Be precise with calculations and only use dimensions that are clearly stated in 
           // Extract floor plan URLs from HTML - try multiple patterns
           const floorplanUrls = [];
           
-          // Pattern 1: Look for floorplans array
+          // Pattern 1: Look for floorplans array with FLP in URL
           const floorplanMatches = html.match(/"floorplans":\[([^\]]*)\]/g);
           if (floorplanMatches) {
             for (const match of floorplanMatches) {
-              const urlMatches = match.match(/"url":"([^"]*floorplan[^"]*\.(?:jpeg|jpg|png|gif))"/gi);
+              // Look for URLs with FLP (floor plan) in the filename
+              const urlMatches = match.match(/"url":"([^"]*FLP[^"]*\.(?:jpeg|jpg|png|gif))"/gi);
               if (urlMatches) {
                 floorplanUrls.push(...urlMatches.map(m => m.match(/"url":"([^"]*)"/)[1]));
               }
             }
           }
           
-          // Pattern 2: Look for any image URLs containing "floorplan"
+          // Pattern 2: Look for any image URLs containing "FLP" (floor plan)
+          const flpMatches = html.match(/"url":"([^"]*FLP[^"]*\.(?:jpeg|jpg|png|gif))"/gi);
+          if (flpMatches) {
+            floorplanUrls.push(...flpMatches.map(m => m.match(/"url":"([^"]*)"/)[1]));
+          }
+          
+          // Pattern 3: Look for floor plan images with "floorplan" in URL
           const generalFloorplanMatches = html.match(/"url":"([^"]*floorplan[^"]*\.(?:jpeg|jpg|png|gif))"/gi);
           if (generalFloorplanMatches) {
             floorplanUrls.push(...generalFloorplanMatches.map(m => m.match(/"url":"([^"]*)"/)[1]));
           }
           
-          // Pattern 3: Look for floor plan images in different structures
-          const altFloorplanMatches = html.match(/https:\/\/[^"]*floorplan[^"]*\.(?:jpeg|jpg|png|gif)/gi);
+          // Pattern 4: Look for floor plan images in different structures
+          const altFloorplanMatches = html.match(/https:\/\/[^"]*FLP[^"]*\.(?:jpeg|jpg|png|gif)/gi);
           if (altFloorplanMatches) {
             floorplanUrls.push(...altFloorplanMatches);
           }
