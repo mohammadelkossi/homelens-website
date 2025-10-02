@@ -213,12 +213,17 @@ function PropertyPreferencesContent() {
           
           if (scrapeResponse.ok) {
             const scrapeData = await scrapeResponse.json();
+            console.log('🕷️ Scrape response:', scrapeData);
             if (scrapeData.success && scrapeData.data) {
               rightmoveData = scrapeData.data;
               // Extract listing text from scraped data
               listingText = scrapeData.data.description || scrapeData.data.summary || "No description available";
-              console.log('✅ Successfully scraped listing text');
+              console.log('✅ Successfully scraped listing text:', listingText.substring(0, 200) + '...');
+            } else {
+              console.error('❌ Scraping failed:', scrapeData.error);
             }
+          } else {
+            console.error('❌ Scrape request failed:', scrapeResponse.status);
           }
         } catch (error) {
           console.error('❌ Failed to scrape Rightmove:', error);

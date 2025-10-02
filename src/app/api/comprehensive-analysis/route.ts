@@ -27,6 +27,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    console.log('🔍 Starting comprehensive property analysis...');
+    console.log('📝 Listing text received:', listingText.substring(0, 200) + '...');
+    console.log('🔗 URL:', url);
+
     // Step 1: Extract basic property information
     const basicInfoPrompt = `
 You are a property analysis expert. Extract the following information from this property listing text:
@@ -74,6 +78,7 @@ Guidelines:
     });
 
     const basicInfo = JSON.parse(basicInfoCompletion.choices[0]?.message?.content || '{}');
+    console.log('🤖 OpenAI API response:', basicInfo);
     
     // Validate that property address was extracted
     if (!basicInfo.propertyAddress) {
