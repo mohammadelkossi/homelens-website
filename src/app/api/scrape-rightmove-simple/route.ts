@@ -277,8 +277,10 @@ Be precise with calculations and only use dimensions that are clearly stated in 
         console.log('🖼️ No size from HTML, attempting to analyze floor plan images...');
         
         try {
-          // Extract floor plan URLs from HTML
+          // Extract floor plan URLs from HTML - try multiple patterns
           const floorplanUrls = [];
+          
+          // Pattern 1: Look for floorplans array
           const floorplanMatches = html.match(/"floorplans":\[([^\]]*)\]/g);
           if (floorplanMatches) {
             for (const match of floorplanMatches) {
@@ -289,11 +291,27 @@ Be precise with calculations and only use dimensions that are clearly stated in 
             }
           }
           
-          console.log('🖼️ Found floor plan URLs:', floorplanUrls);
+          // Pattern 2: Look for any image URLs containing "floorplan"
+          const generalFloorplanMatches = html.match(/"url":"([^"]*floorplan[^"]*\.(?:jpeg|jpg|png|gif))"/gi);
+          if (generalFloorplanMatches) {
+            floorplanUrls.push(...generalFloorplanMatches.map(m => m.match(/"url":"([^"]*)"/)[1]));
+          }
           
-          if (floorplanUrls.length > 0) {
+          // Pattern 3: Look for floor plan images in different structures
+          const altFloorplanMatches = html.match(/https:\/\/[^"]*floorplan[^"]*\.(?:jpeg|jpg|png|gif)/gi);
+          if (altFloorplanMatches) {
+            floorplanUrls.push(...altFloorplanMatches);
+          }
+          
+          // Remove duplicates
+          const uniqueFloorplanUrls = [...new Set(floorplanUrls)];
+          
+          console.log('🖼️ Found floor plan URLs:', uniqueFloorplanUrls);
+          console.log('🖼️ Total floor plan URLs found:', uniqueFloorplanUrls.length);
+          
+          if (uniqueFloorplanUrls.length > 0) {
             // Download the first floor plan image
-            const floorplanUrl = floorplanUrls[0];
+            const floorplanUrl = uniqueFloorplanUrls[0];
             console.log('📥 Downloading floor plan image:', floorplanUrl);
             
             const imageResponse = await fetch(floorplanUrl, {
@@ -312,13 +330,16 @@ Be precise with calculations and only use dimensions that are clearly stated in 
               const imageAnalysisPrompt = `
 You are a property floor plan analysis expert. Analyze this floor plan image to extract room dimensions and calculate the total property size.
 
-INSTRUCTIONS:
-1. Look for room dimensions written on the floor plan (e.g., "7m x 3m", "12ft x 8ft", "4.5m x 2.5m")
-2. Identify each room and its dimensions
-3. Calculate the area of each room (length × width)
-4. Add up all room areas to get total property size
-5. Convert to both square meters and square feet
-6. Return ONLY a JSON object with this structure:
+CRITICAL INSTRUCTIONS:
+1. Look VERY carefully for room dimensions written on the floor plan - they are usually in small text
+2. Look for dimensions in both imperial (feet/inches) and metric (meters) formats
+3. Common patterns: "13'6\" x 11'11\"", "4.12m x 3.64m", "12'10\" x 9'7\""
+4. Dimensions are often written INSIDE each room or next to room labels
+5. Look for measurements like "13'6\"", "11'11\"", "4.12m", "3.64m" etc.
+6. Calculate the area of each room (length × width)
+7. Add up all room areas to get total property size
+8. Convert to both square meters and square feet
+9. Return ONLY a JSON object with this structure:
 
 {
   "totalSizeSqm": <number>,
@@ -337,7 +358,7 @@ If no room dimensions are visible in the image, return:
   "calculationMethod": "No room dimensions visible in floor plan image"
 }
 
-Be precise with calculations and only use dimensions that are clearly visible in the image.
+IMPORTANT: Look very carefully at the image - dimensions are often in small text within each room. Be thorough in your analysis.
 `;
 
               const imageAnalysisCompletion = await openai.chat.completions.create({
