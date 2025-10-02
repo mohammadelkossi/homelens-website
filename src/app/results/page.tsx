@@ -274,7 +274,12 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
       <div className="mx-auto max-w-5xl p-6">
       {/* Header Actions */}
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold" style={{color: COLORS.tealDark}}>HomeLens Report</h1>
+        <div>
+          <h1 className="text-2xl font-semibold" style={{color: COLORS.tealDark}}>HomeLens Report</h1>
+          {overview.address && (
+            <p className="text-sm text-gray-600 mt-1">{overview.address}</p>
+          )}
+        </div>
         <div className="flex gap-2">
           {overview.listingUrl && (
             <button
