@@ -558,33 +558,31 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
               <h4 className="text-sm font-semibold text-green-800">Criteria Met</h4>
             </div>
             <div className="space-y-2">
-              {customCriteria
-                .filter(c => c.isBinary && c.matchScore === 100)
-                .map((c, i) => (
-                  <div key={i} className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100">
-                        <span className="text-xs text-green-600">✓</span>
-                      </div>
-                      <span className="text-green-800">{c.label}</span>
+              {reportData.binaryCriteria?.met?.map((c, i) => (
+                <div key={i} className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100">
+                      <span className="text-xs text-green-600">✓</span>
                     </div>
-                    <div className="ml-7">
-                      <div className="h-2 w-full rounded-full bg-gray-200">
-                        <div 
-                          className="h-2 rounded-full" 
-                          style={{ 
-                            width: `${Math.round(c.importance * 100)}%`, 
-                            backgroundColor: '#368F8B' 
-                          }} 
-                        />
-                      </div>
-                      <div className="mt-1 text-xs text-gray-600">
-                        {Math.round(c.importance * 100)}% importance
-                      </div>
+                    <span className="text-green-800">{c.label}</span>
+                  </div>
+                  <div className="ml-7">
+                    <div className="h-2 w-full rounded-full bg-gray-200">
+                      <div 
+                        className="h-2 rounded-full" 
+                        style={{ 
+                          width: `${Math.round(c.importance * 100)}%`, 
+                          backgroundColor: '#368F8B' 
+                        }} 
+                      />
+                    </div>
+                    <div className="mt-1 text-xs text-gray-600">
+                      {Math.round(c.importance * 100)}% importance
                     </div>
                   </div>
-                ))}
-              {customCriteria.filter(c => c.isBinary && c.matchScore === 100).length === 0 && (
+                </div>
+              ))}
+              {(!reportData.binaryCriteria?.met || reportData.binaryCriteria.met.length === 0) && (
                 <div className="text-sm text-green-600">No binary criteria matched</div>
               )}
             </div>
@@ -597,33 +595,31 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
               <h4 className="text-sm font-semibold text-red-800">Criteria Not Met</h4>
             </div>
             <div className="space-y-2">
-              {customCriteria
-                .filter(c => c.isBinary && c.matchScore === 0)
-                .map((c, i) => (
-                  <div key={i} className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
-                        <span className="text-xs text-red-600">✗</span>
-                      </div>
-                      <span className="text-red-800">{c.label}</span>
+              {reportData.binaryCriteria?.notMet?.map((c, i) => (
+                <div key={i} className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
+                      <span className="text-xs text-red-600">✗</span>
                     </div>
-                    <div className="ml-7">
-                      <div className="h-2 w-full rounded-full bg-gray-200">
-                        <div 
-                          className="h-2 rounded-full" 
-                          style={{ 
-                            width: `${Math.round(c.importance * 100)}%`, 
-                            backgroundColor: '#368F8B' 
-                          }} 
-                        />
-                      </div>
-                      <div className="mt-1 text-xs text-gray-600">
-                        {Math.round(c.importance * 100)}% importance
-                      </div>
+                    <span className="text-red-800">{c.label}</span>
+                  </div>
+                  <div className="ml-7">
+                    <div className="h-2 w-full rounded-full bg-gray-200">
+                      <div 
+                        className="h-2 rounded-full" 
+                        style={{ 
+                          width: `${Math.round(c.importance * 100)}%`, 
+                          backgroundColor: '#368F8B' 
+                        }} 
+                      />
+                    </div>
+                    <div className="mt-1 text-xs text-gray-600">
+                      {Math.round(c.importance * 100)}% importance
                     </div>
                   </div>
-                ))}
-              {customCriteria.filter(c => c.isBinary && c.matchScore === 0).length === 0 && (
+                </div>
+              ))}
+              {(!reportData.binaryCriteria?.notMet || reportData.binaryCriteria.notMet.length === 0) && (
                 <div className="text-sm text-red-600">All binary criteria matched</div>
               )}
             </div>
@@ -776,6 +772,42 @@ export default function ResultsPage() {
         const analysisData = JSON.parse(savedComprehensiveAnalysis);
         setAiAnalysis(analysisData);
         console.log('📊 Comprehensive analysis loaded:', analysisData);
+        
+        // Set property data from basicInfo
+        if (analysisData.basicInfo) {
+          setPropertyData({
+            address: analysisData.basicInfo.propertyAddress,
+            price: analysisData.basicInfo.listingPrice,
+            bedrooms: analysisData.basicInfo.numberOfBedrooms,
+            bathrooms: analysisData.basicInfo.numberOfBathrooms,
+            propertyType: analysisData.basicInfo.propertyType,
+            size: analysisData.basicInfo.floorAreaSqm,
+            description: `${analysisData.basicInfo.propertyAddress} - ${analysisData.basicInfo.propertyType}`
+          });
+        }
+        
+        // Set score data from analysis
+        if (analysisData.diagnostics) {
+          setScoreData({
+            overall: Math.round(analysisData.diagnostics.confidence * 100),
+            investment: Math.round(analysisData.diagnostics.confidence * 85),
+            personalFit: Math.round(analysisData.diagnostics.confidence * 90)
+          });
+        }
+        
+        // Set property history from sale history
+        if (analysisData.basicInfo.propertySaleHistory) {
+          setPropertyHistory({
+            currentPrice: analysisData.basicInfo.listingPrice,
+            saleHistory: Array.isArray(analysisData.basicInfo.propertySaleHistory) 
+              ? analysisData.basicInfo.propertySaleHistory 
+              : null,
+            hasHistory: Array.isArray(analysisData.basicInfo.propertySaleHistory) 
+              ? analysisData.basicInfo.propertySaleHistory.length > 0 
+              : false
+          });
+        }
+        
       } catch (error) {
         console.error('Failed to parse comprehensive analysis:', error);
       }
@@ -841,52 +873,52 @@ export default function ResultsPage() {
     const criteria = [];
     
     // 1. Distance to preferred postcode
-    if (userPreferences.postcode > 0) {
+    if (userPreferences.postcode) {
       criteria.push({
         label: "Distance to preferred postcode",
-        importance: userPreferences.postcode / 10,
+        importance: 0.8,
         matchScore: 86,
         valueText: "2.3 km from SK8"
       });
     }
     
     // 2. Size
-    if (userPreferences.space > 0) {
+    if (userPreferences.space) {
       criteria.push({
         label: "Size",
-        importance: userPreferences.space / 10,
+        importance: 0.7,
         matchScore: 85,
-        valueText: "108 sqm"
+        valueText: `${aiAnalysis.basicInfo?.floorAreaSqm || 'Unknown'} sqm`
       });
     }
     
     // 3. Number of Bedrooms
-    if (userPreferences.bedrooms > 0) {
+    if (userPreferences.bedrooms) {
       criteria.push({
         label: "Number of Bedrooms",
-        importance: userPreferences.bedrooms / 10,
-        matchScore: 90,
-        valueText: "3 bedrooms"
+        importance: 0.9,
+        matchScore: 100,
+        valueText: `${aiAnalysis.basicInfo?.numberOfBedrooms || 'Unknown'} bedrooms`
       });
     }
     
     // 4. Number of Bathrooms
-    if (userPreferences.bathrooms > 0) {
+    if (userPreferences.bathrooms) {
       criteria.push({
         label: "Number of Bathrooms",
-        importance: userPreferences.bathrooms / 10,
-        matchScore: 85,
-        valueText: "2 bathrooms"
+        importance: 0.8,
+        matchScore: 100,
+        valueText: `${aiAnalysis.basicInfo?.numberOfBathrooms || 'Unknown'} bathrooms`
       });
     }
     
     // 5. Property Type
-    if (userPreferences.propertyType > 0) {
+    if (userPreferences.propertyType) {
       criteria.push({
         label: "Property Type",
-        importance: userPreferences.propertyType / 10,
-        matchScore: 80,
-        valueText: "Semi-Detached"
+        importance: 0.6,
+        matchScore: 100,
+        valueText: aiAnalysis.basicInfo?.propertyType || 'Unknown'
       });
     }
     
@@ -903,33 +935,37 @@ export default function ResultsPage() {
         });
       });
     }
-
-    // Add binary criteria (parking, garage, driveway, new build) if user selected them
-    if (aiAnalysis.binaryFeatures && userPreferences.features) {
-      const binaryCriteria = [
-        { key: 'parking', label: 'Parking' },
-        { key: 'garage', label: 'Garage' },
-        { key: 'driveway', label: 'Driveway' },
-        { key: 'newBuild', label: 'New build' }
-      ];
-
-      binaryCriteria.forEach(({ key, label }) => {
-        if (userPreferences.features[label] > 0) {
-          const isPresent = aiAnalysis.binaryFeatures[key] === true;
-          criteria.push({
-            label: label,
-            importance: userPreferences.features[label] / 10,
-            matchScore: isPresent ? 100 : 0,
-            valueText: isPresent ? "Present" : "Not present",
-            isBinary: true
-          });
-        }
-      });
-    }
     
     console.log('✅ Generated criteria:', criteria);
     return criteria;
   }, [aiAnalysis, userPreferences]);
+
+  // Generate binary criteria for Fundamentals section
+  const generateBinaryCriteria = React.useMemo(() => {
+    if (!aiAnalysis || !aiAnalysis.binaryFeatures) {
+      return { met: [], notMet: [] };
+    }
+    
+    const met = [];
+    const notMet = [];
+    
+    // Check each binary feature
+    Object.entries(aiAnalysis.binaryFeatures).forEach(([key, value]) => {
+      if (value === true) {
+        met.push({
+          label: key.charAt(0).toUpperCase() + key.slice(1),
+          importance: 0.8 // Default importance
+        });
+      } else if (value === false) {
+        notMet.push({
+          label: key.charAt(0).toUpperCase() + key.slice(1),
+          importance: 0.8 // Default importance
+        });
+      }
+    });
+    
+    return { met, notMet };
+  }, [aiAnalysis]);
 
   // Merge mock data with AI analysis and real scores
   const reportData = React.useMemo(() => {
@@ -937,6 +973,9 @@ export default function ResultsPage() {
     
     // Update custom criteria with real user preferences
     data.customCriteria = generateCustomCriteria;
+    
+    // Update binary criteria for Fundamentals section
+    data.binaryCriteria = generateBinaryCriteria;
     
     // Update with real property data if available
     if (propertyData) {
@@ -1002,7 +1041,7 @@ export default function ResultsPage() {
     }
     
     return data;
-  }, [aiAnalysis, scoreData, propertyHistory, propertyData, yearlyPriceChanges, generateCustomCriteria]);
+  }, [aiAnalysis, scoreData, propertyHistory, propertyData, yearlyPriceChanges, generateCustomCriteria, generateBinaryCriteria]);
 
   if (loading) {
     return (
