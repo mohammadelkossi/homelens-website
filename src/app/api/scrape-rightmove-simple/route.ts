@@ -28,42 +28,56 @@ export async function POST(request: NextRequest) {
     const html = await response.text();
     console.log('✅ Successfully fetched HTML content');
 
-    // Extract property details using simple text parsing
+    // Extract property details using improved text parsing
     const extractPropertyDetails = (html: string) => {
+      console.log('🔍 Extracting property details from HTML...');
+      
       // Extract address (look for common patterns)
       const addressMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/) || 
                           html.match(/propertyTitle[^>]*>([^<]+)</) ||
                           html.match(/<title[^>]*>([^<]+)<\/title>/);
       
-      // Extract price
+      // Extract price - look for £1,375,000 pattern
       const priceMatch = html.match(/£([0-9,]+)/) || 
                         html.match(/price[^>]*>([^<]+)</);
       
-      // Extract bedrooms
-      const bedroomsMatch = html.match(/(\d+)\s*bed/i) ||
+      // Extract bedrooms - look for "5" in BEDROOMS section
+      const bedroomsMatch = html.match(/BEDROOMS[^>]*>(\d+)/i) ||
+                           html.match(/(\d+)\s*bed/i) ||
                            html.match(/bedrooms[^>]*>(\d+)/i);
       
-      // Extract bathrooms
-      const bathroomsMatch = html.match(/(\d+)\s*bath/i) ||
+      // Extract bathrooms - look for "3" in BATHROOMS section  
+      const bathroomsMatch = html.match(/BATHROOMS[^>]*>(\d+)/i) ||
+                           html.match(/(\d+)\s*bath/i) ||
                            html.match(/bathrooms[^>]*>(\d+)/i);
       
-      // Extract property type
-      const typeMatch = html.match(/propertyType[^>]*>([^<]+)</) ||
+      // Extract property type - look for "Detached" in PROPERTY TYPE section
+      const typeMatch = html.match(/PROPERTY TYPE[^>]*>([^<]+)</i) ||
+                       html.match(/propertyType[^>]*>([^<]+)</) ||
                        html.match(/(detached|semi-detached|terraced|flat|apartment|bungalow)/i);
+      
+      // Extract size - look for "3,265 sq ft" or "303 sq m"
+      const sizeMatch = html.match(/SIZE[^>]*>([^<]+)</i) ||
+                       html.match(/(\d+,?\d*)\s*sq\s*ft/i) ||
+                       html.match(/(\d+)\s*sq\s*m/i);
       
       // Extract description (look for common description patterns)
       const descriptionMatch = html.match(/description[^>]*>([^<]+)</) ||
                               html.match(/<p[^>]*class="[^"]*description[^"]*"[^>]*>([^<]+)</) ||
                               html.match(/<div[^>]*class="[^"]*description[^"]*"[^>]*>([^<]+)</);
 
-      return {
+      const details = {
         address: addressMatch ? addressMatch[1].trim() : null,
         price: priceMatch ? priceMatch[1].replace(/,/g, '') : null,
         bedrooms: bedroomsMatch ? parseInt(bedroomsMatch[1]) : null,
         bathrooms: bathroomsMatch ? parseInt(bathroomsMatch[1]) : null,
         propertyType: typeMatch ? typeMatch[1].trim() : null,
+        size: sizeMatch ? sizeMatch[1].trim() : null,
         description: descriptionMatch ? descriptionMatch[1].trim() : null
       };
+      
+      console.log('📊 Extracted details:', details);
+      return details;
     };
 
     const propertyDetails = extractPropertyDetails(html);
@@ -77,6 +91,7 @@ Price: £${propertyDetails.price || 'Price not found'}
 Property Type: ${propertyDetails.propertyType || 'Type not specified'}
 Bedrooms: ${propertyDetails.bedrooms || 'Not specified'}
 Bathrooms: ${propertyDetails.bathrooms || 'Not specified'}
+Size: ${propertyDetails.size || 'Not specified'}
 
 Description:
 ${propertyDetails.description || 'No description available'}
