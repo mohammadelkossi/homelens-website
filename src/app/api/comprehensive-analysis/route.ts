@@ -75,6 +75,14 @@ Guidelines:
 
     const basicInfo = JSON.parse(basicInfoCompletion.choices[0]?.message?.content || '{}');
     
+    // Validate that property address was extracted
+    if (!basicInfo.propertyAddress) {
+      return NextResponse.json({
+        success: false,
+        error: 'Property address could not be extracted from the listing text. Please ensure the listing contains a valid property address.'
+      });
+    }
+    
     // Calculate time on market
     let firstListedAt = null;
     let timeOnMarketDays = null;

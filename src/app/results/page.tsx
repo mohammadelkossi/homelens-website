@@ -276,8 +276,10 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold" style={{color: COLORS.tealDark}}>HomeLens Report</h1>
-          {overview.address && (
+          {overview.address ? (
             <p className="text-sm text-gray-600 mt-1">{overview.address}</p>
+          ) : (
+            <p className="text-sm text-red-600 mt-1">❌ Property address could not be extracted</p>
           )}
         </div>
         <div className="flex gap-2">
@@ -1006,18 +1008,24 @@ export default function ResultsPage() {
     if (aiAnalysis) {
       // Update overview with real data from comprehensive analysis
       if (aiAnalysis.basicInfo) {
+        // Only use data from AI analysis, no fallback to mock data
         data.overview = {
           ...data.overview,
-          address: aiAnalysis.basicInfo.propertyAddress || data.overview?.address,
-          price: aiAnalysis.basicInfo.listingPrice || data.overview?.price,
-          bedrooms: aiAnalysis.basicInfo.numberOfBedrooms || data.overview?.bedrooms,
-          bathrooms: aiAnalysis.basicInfo.numberOfBathrooms || data.overview?.bathrooms,
-          propertyType: aiAnalysis.basicInfo.propertyType || data.overview?.propertyType,
-          floorAreaSqm: aiAnalysis.basicInfo.floorAreaSqm || data.overview?.floorAreaSqm
+          address: aiAnalysis.basicInfo.propertyAddress,
+          price: aiAnalysis.basicInfo.listingPrice,
+          bedrooms: aiAnalysis.basicInfo.numberOfBedrooms,
+          bathrooms: aiAnalysis.basicInfo.numberOfBathrooms,
+          propertyType: aiAnalysis.basicInfo.propertyType,
+          floorAreaSqm: aiAnalysis.basicInfo.floorAreaSqm
         };
         console.log('📊 Overview updated directly from AI analysis:', data.overview);
         console.log('🏠 Property Address in overview:', data.overview.address);
         console.log('🔍 AI Analysis basicInfo:', aiAnalysis.basicInfo);
+        
+        // Check if property address is missing and show error
+        if (!aiAnalysis.basicInfo.propertyAddress) {
+          console.error('❌ Property address not found in AI analysis');
+        }
       }
       
       data.summary = [
