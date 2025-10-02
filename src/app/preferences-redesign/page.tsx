@@ -203,53 +203,35 @@ function PropertyPreferencesContent() {
       let rightmoveData = null;
       
       if (rightmoveUrl) {
-        // Use real property description from Rightmove listing
-        listingText = `9 Manor Road, Cheadle Hulme, Cheadle, Cheshire, SK8
-        
-        Guide Price: £1,375,000
-        
-        Property Type: Detached
-        Bedrooms: 5
-        Bathrooms: 3
-        Size: 3,265 sq ft (303 sq m)
-        Tenure: Leasehold
-        
-        Key features:
-        - Contemporary detached home
-        - Prime Cheadle Hulme location
-        - Open plan living/dining/kitchen
-        - Fitted utility room
-        - Private extensive enclosed gardens
-        - Garage & Electric Gates
-        - Extending to 3265 sq ft
-        - Close to schools
-        - EPC Rating = C
-        
-        Description:
-        A contemporary five bedroom family home finished to an uncompromising standard all set within a generous plot and close to Cheadle Hulme centre and schools.
-        
-        Occupying a prime position on Manor Road, this outstanding 1950's contemporary detached residence extends to 3265 sq. ft, set in a generous plot and offers beautifully proportioned accommodation on a grand scale. Finished to a high specification throughout, the property has been lavishly designed through an extensive period of remodelling and refurbishment over more recent years to include premium finishes such as a COD kitchen, Roca bathroom suites, Bose sound system, Miele appliances, Howdens and Hammonds bespoke fitted furniture, double glazing and plantation shutters to the front to create an opulent and exceptional family home perfectly designed for modern day living and entertaining.
-        
-        This imposing property with an impressive façade is set back behind gates and is approached via an expansive cobbled driveway with parking for several vehicles and access to the garage with Hormann garage door. The front gardens are spacious and laid to grass with mature shrubbery borders, fencing and a high stone wall.
-        
-        The property is entered via an oversized black wooden door with attractive sidelights and opens into a generous reception hallway with stunning oak doors and Amtico herringbone flooring, which flows into the kitchen/living/dining room and gymnasium with carpet laid to the other reception rooms.
-        
-        To the immediate left, lies the spectacular double aspect living room which is beautifully presented with a feature bay window with plantation shutters with a delightful front aspect and living flame gas fire. To the right of the hallway lies an additional spacious reception room with bay window currently used a home gymnasium but could be used as a sitting room or family room. There is also another reception room to the rear of the property fitted as a home office but could suit a plethora of needs.
-        
-        The highlight of the ground floor accommodation is the living/dining kitchen spanning a notable 30'1" in total with enviable views over the manicured gardens beyond. The COD kitchen has been designed to an innovative finish with a range of bespoke kitchen handless units in two hues of matte grey with Quartz work tops. There is a comprehensive range of integrated Miele appliances including double ovens, coffee machine, induction hob, dishwasher, full height fridge/freezer, Liebherr wine cooler and Quooker tap. This stunning living space enjoys tremendous light levels from the striking glass roof light and bifold doors to the garden all of which create a wonderful area for entertaining with a central island perfect for informal dining. The open plan design allows for formal dining and living and indoor/outdoor dining and entertaining. Completing the ground floor accommodation is a fully fitted utility room with space for a washing machine and dryer, and WC.
-        
-        The first floor has been intelligently configured to provide five generously proportioned bedrooms and three contemporary bathroom suites off a bright and spacious gallery landing. The impressive 25' principal bedroom suite, benefits from a dressing room with Hammonds fitted wardrobes and an en suite with shower. Bedroom two also has a modern en suite with shower. The sizeable family bathroom has been beautifully designed with decorative wall tiling and flooring and a bath. The upstairs accommodation has plenty of storage with fitted wardrobes to all bedrooms. The loft is partially boarded with ladder access.
-        
-        Externally the rear gardens have been beautifully landscaped and the results are truly exceptional. A Millboard decking area and patio adjoins the rear elevation and provides ample of space for outdoor entertaining. The manicured lawned garden enjoys a high degree of privacy and is bordered by established hedging and mature trees.
-        
-        Location:
-        9 Manor Road stands in desirable position on the border of Bramhall and Cheadle Hulme on this tree lined road in Bramhall Park Conservation area. Superbly placed for easy access to Cheadle Hulme station (Manchester Piccadilly 19 minutes) about 10 minute's walk away as is Waitrose and the village centre. Greenbank School, Cheadle Hulme School and Hulme Hall School are all less than 1 mile away. Bramhall Park is around the corner and Bramhall Lawn Tennis Club and Bramhall Park Golf Club are very close by. It is hardly surprising this leafy area has always remained in strong demand with so many amenities on hand.
-        
-        Square Footage: 3,265 sq ft
-        Council Tax Band: F
-        Parking: Yes
-        Garden: Yes`;
-        console.log('📝 Using real Rightmove property description');
+        try {
+          console.log('🕷️ Scraping Rightmove URL:', rightmoveUrl);
+          
+          // Simple web scraping to extract property details
+          const scrapeResponse = await fetch('/api/scrape-rightmove-simple', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rightmoveUrl }),
+          });
+          
+          if (scrapeResponse.ok) {
+            const scrapeData = await scrapeResponse.json();
+            console.log('🕷️ Scrape response:', scrapeData);
+            
+            if (scrapeData.success && scrapeData.listingText) {
+              listingText = scrapeData.listingText;
+              console.log('✅ Successfully scraped listing text:', listingText.substring(0, 200) + '...');
+            } else {
+              console.error('❌ Scraping failed:', scrapeData.error);
+              listingText = "Failed to scrape property details";
+            }
+          } else {
+            console.error('❌ Scrape request failed:', scrapeResponse.status);
+            listingText = "Failed to scrape property details";
+          }
+        } catch (error) {
+          console.error('❌ Failed to scrape Rightmove:', error);
+          listingText = "Failed to scrape property details";
+        }
       }
       
       const analysisResponse = await fetch('/api/comprehensive-analysis', {
