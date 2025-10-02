@@ -356,7 +356,33 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <ToneStat metric="pricePerSqm" label="Price / sqm" value={fmtGBP(market.pricePerSqm)} helper="Subject property" data={{market, overview}} />
+              {typeof overview.floorAreaSqm === "number" ? (
+                <ToneStat metric="pricePerSqm" label="Price / sqm" value={fmtGBP(market.pricePerSqm)} helper="Subject property" data={{market, overview}} />
+              ) : (
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                  <div className="text-xs uppercase tracking-wider text-gray-500">Price / sqm</div>
+                  <div className="mt-1 text-sm text-gray-600">
+                    Property Size not available - ask agent & input manually
+                  </div>
+                  <div className="mt-2">
+                    <input 
+                      type="text" 
+                      placeholder="Enter property size (sqm)" 
+                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                      onChange={(e) => {
+                        const size = parseFloat(e.target.value);
+                        if (!isNaN(size) && size > 0) {
+                          // Update the overview with manual size input
+                          setPropertyData(prev => ({
+                            ...prev,
+                            floorAreaSqm: size
+                          }));
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
               <Stat label="Postcode avg (Listed)" value={fmtGBP(market.avgPricePerSqmPostcodeListed)} />
               <Stat label="Postcode avg (Sold)" value={fmtGBP(market.avgPricePerSqmPostcodeSold)} />
             </div>
