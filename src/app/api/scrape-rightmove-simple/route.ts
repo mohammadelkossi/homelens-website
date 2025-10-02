@@ -48,7 +48,9 @@ export async function POST(request: NextRequest) {
     };
 
     // Look for JSON data in script tags - use a more robust approach
+    console.log('🔍 Looking for PAGE_MODEL in HTML...');
     const scriptMatch = html.match(/window\.PAGE_MODEL\s*=\s*({[\s\S]*?});\s*<\/script>/);
+    console.log('🔍 Script match found:', !!scriptMatch);
     if (scriptMatch) {
       try {
         const pageModel = JSON.parse(scriptMatch[1]);
@@ -130,6 +132,77 @@ export async function POST(request: NextRequest) {
         
         console.log('📊 Extracted from regex fallback:', extractedData);
       }
+    } else {
+      console.log('❌ No PAGE_MODEL found, trying direct regex extraction...');
+      
+      // Direct regex extraction as fallback
+      const addressMatch = html.match(/"displayAddress":"([^"]+)"/);
+      if (addressMatch) extractedData.address = addressMatch[1];
+      
+      const priceMatch = html.match(/"primaryPrice":"£([0-9,]+)"/);
+      if (priceMatch) extractedData.price = parseInt(priceMatch[1].replace(/,/g, ''));
+      
+      const bedroomsMatch = html.match(/"bedrooms":(\d+)/);
+      if (bedroomsMatch) extractedData.bedrooms = parseInt(bedroomsMatch[1]);
+      
+      const bathroomsMatch = html.match(/"bathrooms":(\d+)/);
+      if (bathroomsMatch) extractedData.bathrooms = parseInt(bathroomsMatch[1]);
+      
+      const propertyTypeMatch = html.match(/"propertySubType":"([^"]+)"/);
+      if (propertyTypeMatch) extractedData.propertyType = propertyTypeMatch[1];
+      
+      // Extract size from sizings array
+      const sqftMatch = html.match(/"unit":"sqft"[^}]*"minimumSize":(\d+)/);
+      const sqmMatch = html.match(/"unit":"sqm"[^}]*"minimumSize":(\d+)/);
+      if (sqftMatch) {
+        extractedData.size = `${parseInt(sqftMatch[1]).toLocaleString()} sq ft`;
+        if (sqmMatch) {
+          extractedData.sizeInSqm = parseInt(sqmMatch[1]);
+        } else {
+          extractedData.sizeInSqm = Math.round(parseInt(sqftMatch[1]) * 0.092903);
+        }
+      }
+      
+      console.log('📊 Extracted from direct regex:', extractedData);
+    }
+
+    // If size is still missing, try to extract from floor plan data
+    if (!extractedData.size || !extractedData.sizeInSqm) {
+      console.log('🔍 Size missing, checking floor plan data...');
+      
+      // Look for floor plan size information
+      const floorplanSizeMatch = html.match(/"floorplans":\[[^\]]*"url":"([^"]*floorplan[^"]*)"[^\]]*\]/i);
+      if (floorplanSizeMatch) {
+        console.log('📐 Found floor plan URL:', floorplanSizeMatch[1]);
+      }
+      
+      // Look for size in floor plan captions or descriptions
+      const floorplanCaptionMatch = html.match(/"floorplans":\[[^\]]*"caption":"([^"]*sq[^"]*)"[^\]]*\]/i);
+      if (floorplanCaptionMatch) {
+        console.log('📐 Found floor plan caption with size:', floorplanCaptionMatch[1]);
+        const sizeMatch = floorplanCaptionMatch[1].match(/(\d+(?:,\d+)*)\s*sq\s*ft/i);
+        if (sizeMatch) {
+          extractedData.size = `${sizeMatch[1]} sq ft`;
+          const sqft = parseInt(sizeMatch[1].replace(/,/g, ''));
+          extractedData.sizeInSqm = Math.round(sqft * 0.092903);
+          console.log('📐 Extracted size from floor plan:', extractedData.size);
+        }
+      }
+      
+      // Look for any size mentions in the HTML that we might have missed
+      const anySizeMatch = html.match(/(\d+(?:,\d+)*)\s*sq\s*ft/i) || html.match(/(\d+)\s*sq\s*m/i);
+      if (anySizeMatch && !extractedData.size) {
+        console.log('📐 Found size mention in HTML:', anySizeMatch[0]);
+        if (anySizeMatch[0].includes('sq ft')) {
+          extractedData.size = anySizeMatch[0];
+          const sqft = parseInt(anySizeMatch[1].replace(/,/g, ''));
+          extractedData.sizeInSqm = Math.round(sqft * 0.092903);
+        } else if (anySizeMatch[0].includes('sq m')) {
+          extractedData.sizeInSqm = parseInt(anySizeMatch[1]);
+          extractedData.size = `${Math.round(parseInt(anySizeMatch[1]) / 0.092903).toLocaleString()} sq ft`;
+        }
+        console.log('📐 Extracted size from HTML mention:', extractedData.size);
+      }
     }
 
     // Use OpenAI API to extract any missing property details from HTML
@@ -157,6 +230,8 @@ Guidelines:
 - For price, extract the number only (no currency symbols)
 - For bedrooms/bathrooms, extract as integers
 - For size, look for patterns like "3,333 sq ft", "310 sq m", "SIZE" sections
+- IMPORTANT: If size is not in main property details, check floor plan data, captions, or any size mentions in the HTML
+- Look for floor plan captions that might contain size information
 - For sizeInSqm, convert to square meters if needed (sq ft * 0.092903)
 - Look for BATHROOMS, SIZE, PROPERTY TYPE sections in the HTML
 - If any information is not available, use null
