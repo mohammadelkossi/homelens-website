@@ -209,6 +209,7 @@ export async function POST(request: NextRequest) {
     if ((!extractedData.size || !extractedData.sizeInSqm) && html.includes('floorplan')) {
       console.log('🧮 Size still missing, attempting AI calculation from floor plan room dimensions...');
       
+      // First try to find room dimensions in HTML text
       const floorplanCalculationPrompt = `
 You are a property size calculation expert. Analyze this Rightmove property listing HTML to find room dimensions in floor plans or property descriptions, then calculate the total property size.
 
@@ -269,6 +270,119 @@ Be precise with calculations and only use dimensions that are clearly stated in 
         }
       } catch (error) {
         console.log('❌ AI floor plan calculation failed:', error);
+      }
+
+      // If still no size found, try to download and analyze floor plan images
+      if (!extractedData.size || !extractedData.sizeInSqm) {
+        console.log('🖼️ No size from HTML, attempting to analyze floor plan images...');
+        
+        try {
+          // Extract floor plan URLs from HTML
+          const floorplanUrls = [];
+          const floorplanMatches = html.match(/"floorplans":\[([^\]]*)\]/g);
+          if (floorplanMatches) {
+            for (const match of floorplanMatches) {
+              const urlMatches = match.match(/"url":"([^"]*floorplan[^"]*\.(?:jpeg|jpg|png|gif))"/gi);
+              if (urlMatches) {
+                floorplanUrls.push(...urlMatches.map(m => m.match(/"url":"([^"]*)"/)[1]));
+              }
+            }
+          }
+          
+          console.log('🖼️ Found floor plan URLs:', floorplanUrls);
+          
+          if (floorplanUrls.length > 0) {
+            // Download the first floor plan image
+            const floorplanUrl = floorplanUrls[0];
+            console.log('📥 Downloading floor plan image:', floorplanUrl);
+            
+            const imageResponse = await fetch(floorplanUrl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+              }
+            });
+            
+            if (imageResponse.ok) {
+              const imageBuffer = await imageResponse.arrayBuffer();
+              const imageBase64 = Buffer.from(imageBuffer).toString('base64');
+              
+              console.log('🖼️ Analyzing floor plan image with computer vision...');
+              
+              // Use GPT-4V to analyze the floor plan image
+              const imageAnalysisPrompt = `
+You are a property floor plan analysis expert. Analyze this floor plan image to extract room dimensions and calculate the total property size.
+
+INSTRUCTIONS:
+1. Look for room dimensions written on the floor plan (e.g., "7m x 3m", "12ft x 8ft", "4.5m x 2.5m")
+2. Identify each room and its dimensions
+3. Calculate the area of each room (length × width)
+4. Add up all room areas to get total property size
+5. Convert to both square meters and square feet
+6. Return ONLY a JSON object with this structure:
+
+{
+  "totalSizeSqm": <number>,
+  "totalSizeSqft": <number>,
+  "roomBreakdown": [
+    {"room": "<room name>", "dimensions": "<dimensions>", "areaSqm": <number>}
+  ],
+  "calculationMethod": "<how you calculated it>"
+}
+
+If no room dimensions are visible in the image, return:
+{
+  "totalSizeSqm": null,
+  "totalSizeSqft": null,
+  "roomBreakdown": [],
+  "calculationMethod": "No room dimensions visible in floor plan image"
+}
+
+Be precise with calculations and only use dimensions that are clearly visible in the image.
+`;
+
+              const imageAnalysisCompletion = await openai.chat.completions.create({
+                model: "gpt-4o", // Use GPT-4o for image analysis
+                messages: [
+                  {
+                    role: "system",
+                    content: "You are a property floor plan analysis expert. Analyze floor plan images to extract room dimensions and calculate total property size. Return only valid JSON."
+                  },
+                  {
+                    role: "user",
+                    content: [
+                      {
+                        type: "text",
+                        text: imageAnalysisPrompt
+                      },
+                      {
+                        type: "image_url",
+                        image_url: {
+                          url: `data:image/jpeg;base64,${imageBase64}`
+                        }
+                      }
+                    ]
+                  }
+                ],
+                temperature: 0.1,
+                max_tokens: 1000,
+                response_format: { type: "json_object" },
+              });
+
+              const imageAnalysisData = JSON.parse(imageAnalysisCompletion.choices[0]?.message?.content || '{}');
+              console.log('🖼️ Floor plan image analysis result:', imageAnalysisData);
+              
+              if (imageAnalysisData.totalSizeSqm && imageAnalysisData.totalSizeSqft) {
+                extractedData.size = `${imageAnalysisData.totalSizeSqft.toLocaleString()} sq ft`;
+                extractedData.sizeInSqm = Math.round(imageAnalysisData.totalSizeSqm);
+                console.log('🖼️ Calculated size from floor plan image:', extractedData.size);
+              }
+            } else {
+              console.log('❌ Failed to download floor plan image:', imageResponse.status);
+            }
+          }
+        } catch (error) {
+          console.log('❌ Floor plan image analysis failed:', error);
+        }
       }
     }
 
