@@ -101,6 +101,19 @@ export async function POST(request: NextRequest) {
         }
       }
       
+      // If still no match, try to find any size-related text in the HTML
+      if (!sizeMatch) {
+        console.log('🔍 Searching for any size-related text in HTML...');
+        const sizeTextMatch = html.match(/(\d{1,4}(?:,\d{3})*)\s*(?:sq\s*ft|sq\s*feet|square\s*feet)/i) ||
+                            html.match(/(\d{2,4})\s*(?:sq\s*m|sq\s*meters|square\s*meters)/i) ||
+                            html.match(/(\d{1,4}(?:,\d{3})*)\s*ft/i) ||
+                            html.match(/(\d{2,4})\s*m/i);
+        console.log('📏 Size text match:', sizeTextMatch);
+        if (sizeTextMatch) {
+          sizeMatch = sizeTextMatch;
+        }
+      }
+      
       // Convert size to square meters if needed
       let sizeInSqm = null;
       if (sizeMatch) {
