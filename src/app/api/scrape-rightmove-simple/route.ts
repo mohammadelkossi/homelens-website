@@ -47,8 +47,8 @@ export async function POST(request: NextRequest) {
       description: null
     };
 
-    // Look for JSON data in script tags
-    const scriptMatch = html.match(/window\.PAGE_MODEL\s*=\s*({.*?});/s);
+    // Look for JSON data in script tags - use a more robust approach
+    const scriptMatch = html.match(/window\.PAGE_MODEL\s*=\s*({[\s\S]*?});\s*<\/script>/);
     if (scriptMatch) {
       try {
         const pageModel = JSON.parse(scriptMatch[1]);
@@ -98,6 +98,37 @@ export async function POST(request: NextRequest) {
         console.log('📊 Extracted from JSON:', extractedData);
       } catch (error) {
         console.log('❌ Failed to parse JSON data:', error);
+        console.log('🔍 Trying alternative extraction methods...');
+        
+        // Fallback: try to extract specific fields using regex
+        const addressMatch = html.match(/"displayAddress":"([^"]+)"/);
+        if (addressMatch) extractedData.address = addressMatch[1];
+        
+        const priceMatch = html.match(/"primaryPrice":"£([0-9,]+)"/);
+        if (priceMatch) extractedData.price = parseInt(priceMatch[1].replace(/,/g, ''));
+        
+        const bedroomsMatch = html.match(/"bedrooms":(\d+)/);
+        if (bedroomsMatch) extractedData.bedrooms = parseInt(bedroomsMatch[1]);
+        
+        const bathroomsMatch = html.match(/"bathrooms":(\d+)/);
+        if (bathroomsMatch) extractedData.bathrooms = parseInt(bathroomsMatch[1]);
+        
+        const propertyTypeMatch = html.match(/"propertySubType":"([^"]+)"/);
+        if (propertyTypeMatch) extractedData.propertyType = propertyTypeMatch[1];
+        
+        // Extract size from sizings array
+        const sqftMatch = html.match(/"unit":"sqft"[^}]*"minimumSize":(\d+)/);
+        const sqmMatch = html.match(/"unit":"sqm"[^}]*"minimumSize":(\d+)/);
+        if (sqftMatch) {
+          extractedData.size = `${parseInt(sqftMatch[1]).toLocaleString()} sq ft`;
+          if (sqmMatch) {
+            extractedData.sizeInSqm = parseInt(sqmMatch[1]);
+          } else {
+            extractedData.sizeInSqm = Math.round(parseInt(sqftMatch[1]) * 0.092903);
+          }
+        }
+        
+        console.log('📊 Extracted from regex fallback:', extractedData);
       }
     }
 
