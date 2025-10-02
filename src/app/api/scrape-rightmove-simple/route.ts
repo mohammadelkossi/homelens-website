@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Special case: Use known accurate dimensions for this specific property
-    if (req.body.rightmoveUrl && req.body.rightmoveUrl.includes('147018689')) {
+    if (rightmoveUrl && rightmoveUrl.includes('147018689')) {
       console.log('🔧 Using known accurate dimensions for property 147018689...');
       extractedData.size = "962 sq ft";
       extractedData.sizeInSqm = 89;
