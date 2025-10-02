@@ -212,6 +212,14 @@ export async function POST(request: NextRequest) {
       extractedData.sizeInSqm = 89;
       console.log('✅ Applied accurate size:', extractedData.size, `(${extractedData.sizeInSqm} sqm)`);
     }
+    
+    // Test case: Simulate no size available for property 167302787
+    if (rightmoveUrl && rightmoveUrl.includes('167302787')) {
+      console.log('🧪 Test case: Simulating no size available for property 167302787...');
+      extractedData.size = null;
+      extractedData.sizeInSqm = null;
+      console.log('🧪 Simulated no size available');
+    }
     // If size is still missing and we have a floor plan, try AI calculation from room dimensions
     else if ((!extractedData.size || !extractedData.sizeInSqm) && html.includes('floorplan')) {
       console.log('🧮 Size still missing, attempting AI calculation from floor plan room dimensions...');
