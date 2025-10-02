@@ -775,7 +775,7 @@ export default function ResultsPage() {
         
         // Set property data from basicInfo
         if (analysisData.basicInfo) {
-          setPropertyData({
+          const propertyDataFromAnalysis = {
             address: analysisData.basicInfo.propertyAddress,
             price: analysisData.basicInfo.listingPrice,
             bedrooms: analysisData.basicInfo.numberOfBedrooms,
@@ -783,7 +783,9 @@ export default function ResultsPage() {
             propertyType: analysisData.basicInfo.propertyType,
             size: analysisData.basicInfo.floorAreaSqm,
             description: `${analysisData.basicInfo.propertyAddress} - ${analysisData.basicInfo.propertyType}`
-          });
+          };
+          setPropertyData(propertyDataFromAnalysis);
+          console.log('🏠 Property data set from analysis:', propertyDataFromAnalysis);
         }
         
         // Set score data from analysis
@@ -991,6 +993,7 @@ export default function ResultsPage() {
         propertyType: propertyData.propertyType || data.overview?.propertyType,
         floorAreaSqm: propertyData.size || data.overview?.floorAreaSqm
       };
+      console.log('📊 Overview updated with property data:', data.overview);
     }
     
     // Update with AI analysis
