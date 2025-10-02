@@ -43,21 +43,28 @@ export async function POST(request: NextRequest) {
       
       // Extract bedrooms - look for "5" in BEDROOMS section
       const bedroomsMatch = html.match(/BEDROOMS[^>]*>(\d+)/i) ||
+                           html.match(/<span[^>]*>(\d+)<\/span>[^<]*BEDROOMS/i) ||
                            html.match(/(\d+)\s*bed/i) ||
-                           html.match(/bedrooms[^>]*>(\d+)/i);
+                           html.match(/bedrooms[^>]*>(\d+)/i) ||
+                           html.match(/BEDROOMS.*?(\d+)/i);
       
       // Extract bathrooms - look for "3" in BATHROOMS section  
       const bathroomsMatch = html.match(/BATHROOMS[^>]*>(\d+)/i) ||
+                           html.match(/<span[^>]*>(\d+)<\/span>[^<]*BATHROOMS/i) ||
                            html.match(/(\d+)\s*bath/i) ||
-                           html.match(/bathrooms[^>]*>(\d+)/i);
+                           html.match(/bathrooms[^>]*>(\d+)/i) ||
+                           html.match(/BATHROOMS.*?(\d+)/i);
       
       // Extract property type - look for "Detached" in PROPERTY TYPE section
       const typeMatch = html.match(/PROPERTY TYPE[^>]*>([^<]+)</i) ||
                        html.match(/propertyType[^>]*>([^<]+)</) ||
                        html.match(/(detached|semi-detached|terraced|flat|apartment|bungalow)/i);
       
-      // Extract size - look for "3,265 sq ft" or "303 sq m"
+      // Extract size - look for "3,333 sq ft" or "310 sq m"
       const sizeMatch = html.match(/SIZE[^>]*>([^<]+)</i) ||
+                       html.match(/<span[^>]*>([^<]+)<\/span>[^<]*SIZE/i) ||
+                       html.match(/SIZE.*?(\d+,?\d*\s*sq\s*ft)/i) ||
+                       html.match(/SIZE.*?(\d+\s*sq\s*m)/i) ||
                        html.match(/(\d+,?\d*)\s*sq\s*ft/i) ||
                        html.match(/(\d+)\s*sq\s*m/i);
       
