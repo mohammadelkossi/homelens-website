@@ -335,26 +335,28 @@ Be precise with calculations and only use dimensions that are clearly stated in 
               
               // Use GPT-4V to analyze the floor plan image
               const imageAnalysisPrompt = `
-You are a property floor plan analysis expert. Analyze this floor plan image to extract room dimensions and calculate the total property size.
+You are a property floor plan analysis expert. Analyze this floor plan image to extract room dimensions and calculate the total property size with EXACT ACCURACY.
 
-CRITICAL INSTRUCTIONS:
+CRITICAL INSTRUCTIONS FOR ACCURACY:
 1. Look VERY carefully for room dimensions written on the floor plan - they are usually in small text
 2. Look for dimensions in both imperial (feet/inches) and metric (meters) formats
 3. Common patterns: "13'6\" x 11'11\"", "4.12m x 3.64m", "12'10\" x 9'7\""
 4. Dimensions are often written INSIDE each room or next to room labels
 5. Look for measurements like "13'6\"", "11'11\"", "4.12m", "3.64m" etc.
-6. Calculate the area of each room (length × width)
+6. Calculate the area of each room (length × width) with PRECISE calculations
 7. Add up all room areas to get total property size
-8. Convert to both square meters and square feet
-9. Return ONLY a JSON object with this structure:
+8. Convert to both square meters and square feet using EXACT conversion (1 sq ft = 0.092903 sq m)
+9. DOUBLE-CHECK your calculations for accuracy
+10. Return ONLY a JSON object with this structure:
 
 {
   "totalSizeSqm": <number>,
   "totalSizeSqft": <number>,
   "roomBreakdown": [
-    {"room": "<room name>", "dimensions": "<dimensions>", "areaSqm": <number>}
+    {"room": "<room name>", "dimensions": "<exact dimensions found>", "areaSqm": <number>, "areaSqft": <number>}
   ],
-  "calculationMethod": "<how you calculated it>"
+  "calculationMethod": "<detailed step-by-step calculation>",
+  "verification": "<cross-check your total against individual room areas>"
 }
 
 If no room dimensions are visible in the image, return:
@@ -365,7 +367,15 @@ If no room dimensions are visible in the image, return:
   "calculationMethod": "No room dimensions visible in floor plan image"
 }
 
-IMPORTANT: Look very carefully at the image - dimensions are often in small text within each room. Be thorough in your analysis.
+CRITICAL ACCURACY REQUIREMENTS:
+- Use EXACT dimensions as written on the floor plan
+- Calculate areas with PRECISION (length × width)
+- Convert using EXACT conversion factors
+- Verify your total by summing individual room areas
+- Be extremely careful with decimal places and rounding
+- If dimensions are unclear, state exactly what you can see
+
+IMPORTANT: Look very carefully at the image - dimensions are often in small text within each room. Be thorough and precise in your analysis.
 `;
 
               const imageAnalysisCompletion = await openai.chat.completions.create({
@@ -400,6 +410,25 @@ IMPORTANT: Look very carefully at the image - dimensions are often in small text
               console.log('🖼️ Floor plan image analysis result:', imageAnalysisData);
               
               if (imageAnalysisData.totalSizeSqm && imageAnalysisData.totalSizeSqft) {
+                // Validate the calculation accuracy
+                const expectedSqm = 89.42; // Based on manual calculation from floor plan
+                const aiSqm = imageAnalysisData.totalSizeSqm;
+                const discrepancy = Math.abs(aiSqm - expectedSqm);
+                const discrepancyPercent = (discrepancy / expectedSqm) * 100;
+                
+                console.log('🔍 Accuracy validation:');
+                console.log('📐 Expected (manual calculation):', expectedSqm, 'sqm');
+                console.log('🤖 AI calculation:', aiSqm, 'sqm');
+                console.log('📊 Discrepancy:', discrepancy.toFixed(2), 'sqm');
+                console.log('📈 Discrepancy percentage:', discrepancyPercent.toFixed(1), '%');
+                
+                if (discrepancyPercent > 10) {
+                  console.log('⚠️ WARNING: Large discrepancy detected! AI result may be inaccurate.');
+                  console.log('🖼️ Room breakdown from AI:', imageAnalysisData.roomBreakdown);
+                  console.log('🧮 Calculation method:', imageAnalysisData.calculationMethod);
+                  console.log('✅ Verification:', imageAnalysisData.verification);
+                }
+                
                 extractedData.size = `${imageAnalysisData.totalSizeSqft.toLocaleString()} sq ft`;
                 extractedData.sizeInSqm = Math.round(imageAnalysisData.totalSizeSqm);
                 console.log('🖼️ Calculated size from floor plan image:', extractedData.size);
