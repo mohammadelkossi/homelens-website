@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const extractionPrompt = `
 You are a property data extraction expert. Extract the following information from this Rightmove property listing HTML:
 
-${html.substring(0, 10000)} // Limit HTML to first 10k chars to stay within token limits
+${html.substring(0, 15000)} // Limit HTML to first 15k chars to stay within token limits
 
 Return a JSON object with this exact structure:
 {
@@ -58,8 +58,9 @@ Guidelines:
 - Extract only information that is clearly visible in the HTML
 - For price, extract the number only (no currency symbols)
 - For bedrooms/bathrooms, extract as integers
-- For size, extract the original format (e.g., "3,333 sq ft")
+- For size, look for patterns like "3,333 sq ft", "310 sq m", "SIZE" sections
 - For sizeInSqm, convert to square meters if needed (sq ft * 0.092903)
+- Look for BATHROOMS, SIZE, PROPERTY TYPE sections in the HTML
 - If any information is not available, use null
 - Do not invent facts
 - Return only valid JSON
