@@ -61,6 +61,18 @@ export async function POST(request: NextRequest) {
                        html.match(/(\d+,?\d*)\s*sq\s*ft/i) ||
                        html.match(/(\d+)\s*sq\s*m/i);
       
+      // Convert size to square meters if needed
+      let sizeInSqm = null;
+      if (sizeMatch) {
+        const sizeText = sizeMatch[1].trim();
+        if (sizeText.includes('sq ft')) {
+          const sqft = parseFloat(sizeText.replace(/[^\d.]/g, ''));
+          sizeInSqm = Math.round(sqft * 0.092903); // Convert sq ft to sq m
+        } else if (sizeText.includes('sq m')) {
+          sizeInSqm = parseFloat(sizeText.replace(/[^\d.]/g, ''));
+        }
+      }
+      
       // Extract description (look for common description patterns)
       const descriptionMatch = html.match(/description[^>]*>([^<]+)</) ||
                               html.match(/<p[^>]*class="[^"]*description[^"]*"[^>]*>([^<]+)</) ||
@@ -73,6 +85,7 @@ export async function POST(request: NextRequest) {
         bathrooms: bathroomsMatch ? parseInt(bathroomsMatch[1]) : null,
         propertyType: typeMatch ? typeMatch[1].trim() : null,
         size: sizeMatch ? sizeMatch[1].trim() : null,
+        sizeInSqm: sizeInSqm,
         description: descriptionMatch ? descriptionMatch[1].trim() : null
       };
       
@@ -92,6 +105,7 @@ Property Type: ${propertyDetails.propertyType || 'Type not specified'}
 Bedrooms: ${propertyDetails.bedrooms || 'Not specified'}
 Bathrooms: ${propertyDetails.bathrooms || 'Not specified'}
 Size: ${propertyDetails.size || 'Not specified'}
+Size in square meters: ${propertyDetails.sizeInSqm || 'Not specified'}
 
 Description:
 ${propertyDetails.description || 'No description available'}

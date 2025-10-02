@@ -220,6 +220,7 @@ function PropertyPreferencesContent() {
             if (scrapeData.success && scrapeData.listingText) {
               listingText = scrapeData.listingText;
               console.log('✅ Successfully scraped listing text:', listingText.substring(0, 200) + '...');
+              console.log('📊 Scraped property details:', scrapeData.propertyDetails);
             } else {
               console.error('❌ Scraping failed:', scrapeData.error);
               listingText = "Failed to scrape property details";
