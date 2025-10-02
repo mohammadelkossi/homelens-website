@@ -236,7 +236,7 @@ function SoldChangeChart({ data }) {
 }
 
 // ===================== Main Component ==================== //
-function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDData = false, propertyData = null, onPrint }) {
+function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDData = false, propertyData = null, binaryCriteria = { met: [], notMet: [] }, onPrint }) {
   const { overallScore, overview, market, customCriteria, summary } = data;
   
   // Extract postcode from address for title - try multiple patterns
@@ -1057,5 +1057,5 @@ export default function ResultsPage() {
     );
   }
 
-  return <HomeLensReport data={reportData} landRegistryData={landRegistryData} hasRealPPDData={hasRealPPDData} propertyData={propertyData} />;
+  return <HomeLensReport data={reportData} landRegistryData={landRegistryData} hasRealPPDData={hasRealPPDData} propertyData={propertyData} binaryCriteria={binaryCriteria} />;
 }
