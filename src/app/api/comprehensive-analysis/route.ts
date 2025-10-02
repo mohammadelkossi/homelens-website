@@ -29,20 +29,24 @@ You are a property analysis expert. Extract the following information from this 
 
 Return a JSON object with this exact structure:
 {
-  "propertyAddress": "Full property address",
-  "listingPrice": "Price as number (e.g., 250000)",
-  "area": "Area/location name",
-  "numberOfBedrooms": "Number as integer",
-  "numberOfBathrooms": "Number as integer", 
-  "propertyType": "Type of property (e.g., Semi-Detached, Terraced, etc.)",
-  "propertySaleHistory": "Brief description of any sale history mentioned"
+  "propertyAddress": "Full property address or null",
+  "listingPrice": "Price as number (e.g., 250000) or null",
+  "area": "Area/location name (e.g., Manchester) or null",
+  "floorAreaSqm": "Floor area in square meters as number or null",
+  "numberOfBedrooms": "Number as integer or null",
+  "numberOfBathrooms": "Number as integer or null", 
+  "propertyType": "Type of property (e.g., Semi-Detached, Terraced, etc.) or null",
+  "propertySaleHistory": "Array of {date, priceGBP, note} objects, string description, or null"
 }
 
 Guidelines:
 - Extract only information that is clearly visible on the property listing
 - For price, extract the number only (no currency symbols)
 - For bedrooms/bathrooms, extract as integers
+- For floor area, extract in square meters
+- For sale history, if structured return array, if text return string, if none return null
 - If any information is not available, use null
+- Do not invent facts
 - Return only valid JSON
 `;
 
@@ -65,8 +69,14 @@ Guidelines:
 
     const basicInfo = JSON.parse(basicInfoCompletion.choices[0]?.message?.content || '{}');
 
-    // Step 2: Analyze binary features if user selected them
-    let binaryFeatures = {};
+    // Step 2: Analyze binary features only if user selected them
+    let binaryFeatures = {
+      parking: null,
+      garage: null,
+      driveway: null,
+      newBuild: null
+    };
+    
     if (userPreferences?.featuresImportance) {
       const selectedFeatures = Object.entries(userPreferences.featuresImportance)
         .filter(([key, value]) => value > 0)
@@ -76,17 +86,18 @@ Guidelines:
         const binaryPrompt = `
 You are a property analysis expert. Analyze this Rightmove property URL: ${rightmoveUrl}
 
-Check for the following features and return a JSON object with true/false for each:
+Check for the following features and return a JSON object with true/false/null for each:
 {
-  "parking": true/false,
-  "garage": true/false, 
-  "driveway": true/false,
-  "newBuild": true/false
+  "parking": true/false/null,
+  "garage": true/false/null, 
+  "driveway": true/false/null,
+  "newBuild": true/false/null
 }
 
 Guidelines:
 - Return true only if the feature is clearly mentioned as present
-- Return false if not mentioned or explicitly stated as absent
+- Return false if explicitly stated as absent
+- Return null if not mentioned or unclear
 - Be conservative - only return true with clear evidence
 - Return only valid JSON
 `;
@@ -108,7 +119,21 @@ Guidelines:
           response_format: { type: "json_object" },
         });
 
-        binaryFeatures = JSON.parse(binaryCompletion.choices[0]?.message?.content || '{}');
+        const extractedFeatures = JSON.parse(binaryCompletion.choices[0]?.message?.content || '{}');
+        
+        // Only include features that user selected
+        if (selectedFeatures.includes('Parking')) {
+          binaryFeatures.parking = extractedFeatures.parking;
+        }
+        if (selectedFeatures.includes('Garage')) {
+          binaryFeatures.garage = extractedFeatures.garage;
+        }
+        if (selectedFeatures.includes('Driveway')) {
+          binaryFeatures.driveway = extractedFeatures.driveway;
+        }
+        if (selectedFeatures.includes('New build')) {
+          binaryFeatures.newBuild = extractedFeatures.newBuild;
+        }
       }
     }
 
@@ -171,7 +196,29 @@ Guidelines:
       }
     }
 
-    // Step 4: Compile final analysis
+    // Step 4: Compile final analysis with exact JSON structure
+    const userPrefs = {};
+    
+    // Only include preferences that user actually filled out
+    if (userPreferences?.importance?.postcode > 0) {
+      userPrefs.postcode = userPreferences.importance.postcode;
+    }
+    if (userPreferences?.importance?.space > 0) {
+      userPrefs.space = userPreferences.importance.space;
+    }
+    if (userPreferences?.importance?.bedrooms > 0) {
+      userPrefs.bedrooms = userPreferences.importance.bedrooms;
+    }
+    if (userPreferences?.importance?.bathrooms > 0) {
+      userPrefs.bathrooms = userPreferences.importance.bathrooms;
+    }
+    if (userPreferences?.importance?.propertyType > 0) {
+      userPrefs.propertyType = userPreferences.importance.propertyType;
+    }
+    if (userPreferences?.featuresImportance && Object.keys(userPreferences.featuresImportance).length > 0) {
+      userPrefs.features = userPreferences.featuresImportance;
+    }
+
     const analysisResult = {
       success: true,
       timestamp: new Date().toISOString(),
@@ -180,17 +227,7 @@ Guidelines:
         basicInfo,
         binaryFeatures,
         additionalCriteria,
-        userPreferences: userPreferences ? {
-          // Only include preferences that user actually filled out
-          ...(userPreferences.importance?.postcode > 0 && { postcode: userPreferences.importance.postcode }),
-          ...(userPreferences.importance?.space > 0 && { space: userPreferences.importance.space }),
-          ...(userPreferences.importance?.bedrooms > 0 && { bedrooms: userPreferences.importance.bedrooms }),
-          ...(userPreferences.importance?.bathrooms > 0 && { bathrooms: userPreferences.importance.bathrooms }),
-          ...(userPreferences.importance?.propertyType > 0 && { propertyType: userPreferences.importance.propertyType }),
-          ...(userPreferences.featuresImportance && Object.keys(userPreferences.featuresImportance).length > 0 && { 
-            features: userPreferences.featuresImportance 
-          })
-        } : null
+        userPreferences: Object.keys(userPrefs).length > 0 ? userPrefs : null
       }
     };
 
