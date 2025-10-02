@@ -58,7 +58,8 @@ export async function POST(request: NextRequest) {
       // Extract property type - look for "Detached" in PROPERTY TYPE section
       const typeMatch = html.match(/PROPERTY TYPE[^>]*>([^<]+)</i) ||
                        html.match(/propertyType[^>]*>([^<]+)</) ||
-                       html.match(/(detached|semi-detached|terraced|flat|apartment|bungalow)/i);
+                       html.match(/(detached|semi-detached|terraced|flat|apartment|bungalow)/i) ||
+                       html.match(/PROPERTY TYPE.*?([A-Za-z\s-]+)/i);
       
       // Extract size - look for "3,333 sq ft" or "310 sq m"
       console.log('🔍 Looking for size data...');
@@ -83,6 +84,20 @@ export async function POST(request: NextRequest) {
         console.log('📏 Alternative size match:', altSizeMatch);
         if (altSizeMatch) {
           sizeMatch = altSizeMatch;
+        }
+      }
+      
+      // If still no match, try more aggressive patterns
+      if (!sizeMatch) {
+        console.log('🔍 Trying aggressive size patterns...');
+        const aggressiveMatch = html.match(/(\d{1,4}(?:,\d{3})*)\s*sq\s*ft/i) ||
+                              html.match(/(\d{1,4}(?:,\d{3})*)\s*sq\s*ft/i) ||
+                              html.match(/(\d{2,4})\s*sq\s*m/i) ||
+                              html.match(/sq\s*ft[^>]*(\d{1,4}(?:,\d{3})*)/i) ||
+                              html.match(/sq\s*m[^>]*(\d{2,4})/i);
+        console.log('📏 Aggressive size match:', aggressiveMatch);
+        if (aggressiveMatch) {
+          sizeMatch = aggressiveMatch;
         }
       }
       
