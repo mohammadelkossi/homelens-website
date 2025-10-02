@@ -1015,6 +1015,11 @@ export default function ResultsPage() {
         };
         console.log('📊 Overview updated directly from AI analysis:', data.overview);
         console.log('🏠 Property Address in overview:', data.overview.address);
+        console.log('💰 Property Price:', data.overview.price);
+        console.log('🛏️ Property Bedrooms:', data.overview.bedrooms);
+        console.log('🚿 Property Bathrooms:', data.overview.bathrooms);
+        console.log('🏠 Property Type:', data.overview.propertyType);
+        console.log('📏 Property Size:', data.overview.floorAreaSqm);
         console.log('🔍 AI Analysis basicInfo:', aiAnalysis.basicInfo);
         
         // Check if property address is missing and show error
