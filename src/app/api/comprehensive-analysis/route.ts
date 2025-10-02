@@ -9,15 +9,17 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { 
-      rightmoveUrl, 
-      userPreferences, 
-      anythingElse 
+      listingText,
+      url,
+      toggles,
+      userPreferences,
+      anythingElse
     } = body;
 
-    if (!rightmoveUrl) {
+    if (!listingText) {
       return NextResponse.json({
         success: false,
-        error: 'Rightmove URL is required'
+        error: 'Listing text is required'
       });
     }
 
@@ -25,7 +27,9 @@ export async function POST(request: NextRequest) {
 
     // Step 1: Extract basic property information
     const basicInfoPrompt = `
-You are a property analysis expert. Extract the following information from this Rightmove property URL: ${rightmoveUrl}
+You are a property analysis expert. Extract the following information from this property listing text:
+
+${listingText}
 
 Return a JSON object with this exact structure:
 {
@@ -40,7 +44,7 @@ Return a JSON object with this exact structure:
 }
 
 Guidelines:
-- Extract only information that is clearly visible on the property listing
+- Extract only information that is clearly visible in the listing text
 - For price, extract the number only (no currency symbols)
 - For bedrooms/bathrooms, extract as integers
 - For floor area, extract in square meters
@@ -69,7 +73,7 @@ Guidelines:
 
     const basicInfo = JSON.parse(basicInfoCompletion.choices[0]?.message?.content || '{}');
 
-    // Step 2: Analyze binary features only if user selected them
+    // Step 2: Analyze binary features only if user toggled them on
     let binaryFeatures = {
       parking: null,
       garage: null,
@@ -77,14 +81,11 @@ Guidelines:
       newBuild: null
     };
     
-    if (userPreferences?.featuresImportance) {
-      const selectedFeatures = Object.entries(userPreferences.featuresImportance)
-        .filter(([key, value]) => value > 0)
-        .map(([key]) => key);
+    if (toggles && Object.values(toggles).some(value => value === true)) {
+      const binaryPrompt = `
+You are a property analysis expert. Analyze this property listing text:
 
-      if (selectedFeatures.length > 0) {
-        const binaryPrompt = `
-You are a property analysis expert. Analyze this Rightmove property URL: ${rightmoveUrl}
+${listingText}
 
 Check for the following features and return a JSON object with true/false/null for each:
 {
@@ -102,38 +103,37 @@ Guidelines:
 - Return only valid JSON
 `;
 
-        const binaryCompletion = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content: "You are a property analysis expert. Check for specific property features. Return only valid JSON."
-            },
-            {
-              role: "user",
-              content: binaryPrompt
-            }
-          ],
-          temperature: 0.1,
-          max_tokens: 200,
-          response_format: { type: "json_object" },
-        });
+      const binaryCompletion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "You are a property analysis expert. Check for specific property features. Return only valid JSON."
+          },
+          {
+            role: "user",
+            content: binaryPrompt
+          }
+        ],
+        temperature: 0.1,
+        max_tokens: 200,
+        response_format: { type: "json_object" },
+      });
 
-        const extractedFeatures = JSON.parse(binaryCompletion.choices[0]?.message?.content || '{}');
-        
-        // Only include features that user selected
-        if (selectedFeatures.includes('Parking')) {
-          binaryFeatures.parking = extractedFeatures.parking;
-        }
-        if (selectedFeatures.includes('Garage')) {
-          binaryFeatures.garage = extractedFeatures.garage;
-        }
-        if (selectedFeatures.includes('Driveway')) {
-          binaryFeatures.driveway = extractedFeatures.driveway;
-        }
-        if (selectedFeatures.includes('New build')) {
-          binaryFeatures.newBuild = extractedFeatures.newBuild;
-        }
+      const extractedFeatures = JSON.parse(binaryCompletion.choices[0]?.message?.content || '{}');
+      
+      // Only include features that user toggled on
+      if (toggles.parking) {
+        binaryFeatures.parking = extractedFeatures.parking;
+      }
+      if (toggles.garage) {
+        binaryFeatures.garage = extractedFeatures.garage;
+      }
+      if (toggles.driveway) {
+        binaryFeatures.driveway = extractedFeatures.driveway;
+      }
+      if (toggles.newBuild) {
+        binaryFeatures.newBuild = extractedFeatures.newBuild;
       }
     }
 
@@ -197,37 +197,15 @@ Guidelines:
     }
 
     // Step 4: Compile final analysis with exact JSON structure
-    const userPrefs = {};
-    
-    // Only include preferences that user actually filled out
-    if (userPreferences?.importance?.postcode > 0) {
-      userPrefs.postcode = userPreferences.importance.postcode;
-    }
-    if (userPreferences?.importance?.space > 0) {
-      userPrefs.space = userPreferences.importance.space;
-    }
-    if (userPreferences?.importance?.bedrooms > 0) {
-      userPrefs.bedrooms = userPreferences.importance.bedrooms;
-    }
-    if (userPreferences?.importance?.bathrooms > 0) {
-      userPrefs.bathrooms = userPreferences.importance.bathrooms;
-    }
-    if (userPreferences?.importance?.propertyType > 0) {
-      userPrefs.propertyType = userPreferences.importance.propertyType;
-    }
-    if (userPreferences?.featuresImportance && Object.keys(userPreferences.featuresImportance).length > 0) {
-      userPrefs.features = userPreferences.featuresImportance;
-    }
-
     const analysisResult = {
       success: true,
       timestamp: new Date().toISOString(),
-      propertyUrl: rightmoveUrl,
+      propertyUrl: url,
       analysis: {
         basicInfo,
         binaryFeatures,
         additionalCriteria,
-        userPreferences: Object.keys(userPrefs).length > 0 ? userPrefs : null
+        userPreferences: userPreferences || null
       }
     };
 
