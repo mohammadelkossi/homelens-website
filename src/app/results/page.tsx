@@ -791,6 +791,7 @@ export default function ResultsPage() {
           };
           setPropertyData(propertyDataFromAnalysis);
           console.log('🏠 Property data set from analysis:', propertyDataFromAnalysis);
+          console.log('📍 Property Address from OpenAI API:', analysisData.basicInfo.propertyAddress);
         }
         
         // Set score data from analysis
@@ -1015,6 +1016,8 @@ export default function ResultsPage() {
           floorAreaSqm: aiAnalysis.basicInfo.floorAreaSqm || data.overview?.floorAreaSqm
         };
         console.log('📊 Overview updated directly from AI analysis:', data.overview);
+        console.log('🏠 Property Address in overview:', data.overview.address);
+        console.log('🔍 AI Analysis basicInfo:', aiAnalysis.basicInfo);
       }
       
       data.summary = [
