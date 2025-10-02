@@ -34,13 +34,80 @@ export async function POST(request: NextRequest) {
     console.log('✅ Successfully fetched HTML content');
     console.log('📄 HTML length:', html.length);
 
-    // Use OpenAI API to extract property details from HTML
-    console.log('🤖 Using OpenAI API to extract property details...');
+    // First, try to extract key data from JSON structure in HTML
+    console.log('🔍 Looking for JSON data in HTML...');
+    let extractedData = {
+      address: null,
+      price: null,
+      bedrooms: null,
+      bathrooms: null,
+      propertyType: null,
+      size: null,
+      sizeInSqm: null,
+      description: null
+    };
+
+    // Look for JSON data in script tags
+    const scriptMatch = html.match(/window\.PAGE_MODEL\s*=\s*({.*?});/s);
+    if (scriptMatch) {
+      try {
+        const pageModel = JSON.parse(scriptMatch[1]);
+        console.log('📊 Found PAGE_MODEL JSON data');
+        
+        // Extract from propertyData
+        if (pageModel.propertyData) {
+          const pd = pageModel.propertyData;
+          
+          // Extract address
+          if (pd.address?.displayAddress) {
+            extractedData.address = pd.address.displayAddress;
+          }
+          
+          // Extract price
+          if (pd.prices?.primaryPrice) {
+            const priceStr = pd.prices.primaryPrice.replace(/[£,]/g, '');
+            extractedData.price = parseInt(priceStr);
+          }
+          
+          // Extract bedrooms and bathrooms
+          if (pd.bedrooms) extractedData.bedrooms = pd.bedrooms;
+          if (pd.bathrooms) extractedData.bathrooms = pd.bathrooms;
+          
+          // Extract property type
+          if (pd.propertySubType) {
+            extractedData.propertyType = pd.propertySubType;
+          }
+          
+          // Extract size from sizings array
+          if (pd.sizings && Array.isArray(pd.sizings)) {
+            const sqftSize = pd.sizings.find(s => s.unit === 'sqft');
+            const sqmSize = pd.sizings.find(s => s.unit === 'sqm');
+            
+            if (sqftSize) {
+              extractedData.size = `${sqftSize.minimumSize.toLocaleString()} sq ft`;
+              extractedData.sizeInSqm = sqmSize ? sqmSize.minimumSize : Math.round(sqftSize.minimumSize * 0.092903);
+            }
+          }
+          
+          // Extract description
+          if (pd.text?.description) {
+            extractedData.description = pd.text.description;
+          }
+        }
+        
+        console.log('📊 Extracted from JSON:', extractedData);
+      } catch (error) {
+        console.log('❌ Failed to parse JSON data:', error);
+      }
+    }
+
+    // Use OpenAI API to extract any missing property details from HTML
+    console.log('🤖 Using OpenAI API to extract missing property details...');
     
     const extractionPrompt = `
 You are a property data extraction expert. Extract the following information from this Rightmove property listing HTML:
 
-${html.substring(0, 15000)} // Limit HTML to first 15k chars to stay within token limits
+${html.substring(0, 20000)} // Limit HTML to first 20k chars to stay within token limits
 
 Return a JSON object with this exact structure:
 {
@@ -66,25 +133,41 @@ Guidelines:
 - Return only valid JSON
 `;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "You are a property data extraction expert. Extract property information from HTML. Return only valid JSON."
-        },
-        {
-          role: "user",
-          content: extractionPrompt
-        }
-      ],
-      temperature: 0.1,
-      max_tokens: 500,
-      response_format: { type: "json_object" },
-    });
+    // Only call OpenAI if we're missing critical data
+    const missingFields = Object.entries(extractedData).filter(([key, value]) => value === null);
+    
+    if (missingFields.length > 0) {
+      console.log('🤖 Missing fields, calling OpenAI for:', missingFields.map(([key]) => key));
+      
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "You are a property data extraction expert. Extract property information from HTML. Return only valid JSON."
+          },
+          {
+            role: "user",
+            content: extractionPrompt
+          }
+        ],
+        temperature: 0.1,
+        max_tokens: 500,
+        response_format: { type: "json_object" },
+      });
 
-    const extractedData = JSON.parse(completion.choices[0]?.message?.content || '{}');
-    console.log('🤖 OpenAI extracted data:', extractedData);
+      const aiExtractedData = JSON.parse(completion.choices[0]?.message?.content || '{}');
+      console.log('🤖 OpenAI extracted data:', aiExtractedData);
+      
+      // Merge AI data with extracted data, only filling in missing fields
+      Object.keys(extractedData).forEach(key => {
+        if (extractedData[key] === null && aiExtractedData[key] !== null) {
+          extractedData[key] = aiExtractedData[key];
+        }
+      });
+    } else {
+      console.log('✅ All data extracted from JSON, no need for OpenAI');
+    }
 
     // Create a structured listing text using OpenAI extracted data
     const listingText = `${extractedData.address || 'Property Address'}
