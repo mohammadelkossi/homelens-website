@@ -547,10 +547,25 @@ ${extractedData.description || 'No description available'}
 
 Additional details extracted from Rightmove listing using OpenAI API.`;
 
+    // Extract property images
+    const imageUrls = [];
+    const imageMatches = html.match(/"images":\[([^\]]*)\]/g);
+    if (imageMatches) {
+      for (const match of imageMatches) {
+        const urlMatches = match.match(/"url":"([^"]*\.(?:jpeg|jpg|png|gif))"/gi);
+        if (urlMatches) {
+          imageUrls.push(...urlMatches.map(m => m.match(/"url":"([^"]*)"/)[1]));
+        }
+      }
+    }
+    
+    console.log('📸 Found property images:', imageUrls.length);
+
     return NextResponse.json({
       success: true,
       listingText: listingText,
-      propertyDetails: extractedData
+      propertyDetails: extractedData,
+      images: imageUrls.slice(0, 5) // Limit to first 5 images for analysis
     });
 
   } catch (error) {
