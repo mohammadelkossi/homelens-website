@@ -998,6 +998,20 @@ export default function ResultsPage() {
     
     // Update with AI analysis
     if (aiAnalysis) {
+      // Update overview with real data from comprehensive analysis
+      if (aiAnalysis.basicInfo) {
+        data.overview = {
+          ...data.overview,
+          address: aiAnalysis.basicInfo.propertyAddress || data.overview?.address,
+          price: aiAnalysis.basicInfo.listingPrice || data.overview?.price,
+          bedrooms: aiAnalysis.basicInfo.numberOfBedrooms || data.overview?.bedrooms,
+          bathrooms: aiAnalysis.basicInfo.numberOfBathrooms || data.overview?.bathrooms,
+          propertyType: aiAnalysis.basicInfo.propertyType || data.overview?.propertyType,
+          floorAreaSqm: aiAnalysis.basicInfo.floorAreaSqm || data.overview?.floorAreaSqm
+        };
+        console.log('📊 Overview updated directly from AI analysis:', data.overview);
+      }
+      
       data.summary = [
         {
           title: "Positives",
