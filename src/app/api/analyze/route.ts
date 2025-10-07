@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { scrapeRightmoveProperty } from '@/lib/scraper';
+import { smartScrapeProperty } from '@/lib/smartScraper';
 import { analyzeProperty } from '@/lib/analysis';
 
 const AnalyzeRequestSchema = z.object({
@@ -53,29 +53,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Starting property scraping...');
-    // Scrape property data
-    let propertyData;
+    console.log('Starting smart property scraping...');
+    // Use smart scraper with fallback
+    let scrapeResult;
     try {
-      propertyData = await scrapeRightmoveProperty(rightmoveUrl);
-      console.log('Property data scraped:', propertyData);
+      scrapeResult = await smartScrapeProperty(rightmoveUrl);
+      console.log(`✅ Smart scraping completed using: ${scrapeResult.method}`);
+      
+      if (scrapeResult.method === 'openai_fallback') {
+        console.log(`⚠️ Fallback reason: ${scrapeResult.fallbackReason}`);
+        if (scrapeResult.missingFields) {
+          console.log(`⚠️ Missing fields from scraper: ${scrapeResult.missingFields.join(', ')}`);
+        }
+      }
+      
     } catch (scrapeError) {
-      console.error('Scraping failed, using mock data:', scrapeError);
-      // Use mock data if scraping fails (for testing)
-      propertyData = {
-        price: 350000,
-        address: "123 Test Street",
-        postcode: "S10 1AA",
-        bedrooms: 3,
-        bathrooms: 2,
-        propertyType: "Detached",
-        size: 120,
-        description: "A beautiful test property for demonstration purposes.",
-        images: ["/Charming Cottage in Lush Countryside.png"],
-        rawText: "Test property data",
-        features: ["Garden", "Parking", "Modern kitchen"]
+      console.error('❌ Smart scraping completely failed:', scrapeError);
+      // Use minimal fallback data if everything fails
+      scrapeResult = {
+        data: {
+          price: 0,
+          address: 'Property data extraction failed',
+          postcode: '',
+          bedrooms: 0,
+          bathrooms: 0,
+          propertyType: '',
+          description: 'Unable to extract property data',
+          images: [],
+          features: []
+        },
+        method: 'openai_fallback' as const,
+        fallbackReason: `Complete failure: ${scrapeError instanceof Error ? scrapeError.message : 'Unknown error'}`
       };
     }
+    
+    const propertyData = scrapeResult.data;
     
     // Set default non-negotiables if not provided
     const config = {
@@ -93,10 +105,14 @@ export async function POST(request: NextRequest) {
     const results = await analyzeProperty(propertyData, config);
     console.log('Analysis completed');
     
-    // Add the original URL to the results
+    // Add the original URL and scraping method to the results
     results.propertyData.url = rightmoveUrl;
 
-    return NextResponse.json(results);
+    return NextResponse.json({
+      ...results,
+      scrapingMethod: scrapeResult.method,
+      fallbackReason: scrapeResult.fallbackReason
+    });
   } catch (error) {
     console.error('Analysis error:', error);
     

@@ -6,6 +6,12 @@ const GOOGLE_MAPS_API_BASE = 'https://maps.googleapis.com/maps/api/place';
 const placesCache = new Map<string, { data: any; timestamp: number }>();
 const PLACES_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+// Function to clear the places cache
+export function clearPlacesCache(): void {
+  placesCache.clear();
+  console.log('🧹 Places API cache cleared');
+}
+
 interface PlaceResult {
   place_id: string;
   name: string;
@@ -163,6 +169,20 @@ function getFallbackPlaces(placeType: string, latitude: number, longitude: numbe
 }
 
 export async function fetchLocalityData(latitude: number, longitude: number): Promise<LocalityData> {
+  // Check if API key is available
+  if (!GOOGLE_MAPS_API_KEY) {
+    console.warn('Google Maps API key not configured, returning empty locality data');
+    return {
+      parks: [],
+      airports: [],
+      schools: [],
+      hospitals: [],
+      trainStations: [],
+      petrolStations: [],
+      supermarkets: []
+    };
+  }
+
   const [
     parks,
     airports,

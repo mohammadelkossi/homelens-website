@@ -5,38 +5,117 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function POST(request: NextRequest) {
+// AI-First Property Data Extraction
+async function extractPropertyDataWithAI(html: string, url: string) {
+  console.log('🤖 Starting AI-powered property data extraction...');
+  
+  // Clean HTML for better AI processing
+  const cleanHtml = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove scripts
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove styles
+    .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '') // Remove noscript
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim();
+
+  const aiPrompt = `
+You are a property data extraction expert. Analyze this Rightmove property page HTML and extract the following information:
+
+URL: ${url}
+
+Extract these fields and return ONLY a valid JSON object:
+{
+  "address": "Full property address (street, city, postcode) or null",
+  "price": "Price as number (e.g., 250000) or null",
+  "bedrooms": "Number of bedrooms as integer or null",
+  "bathrooms": "Number of bathrooms as integer or null",
+  "propertyType": "Property type (e.g., 'Semi-Detached House', 'Terraced House', 'Flat') or null",
+  "size": "Size description (e.g., '1,200 sq ft') or 'Ask agent' if not available or shows 'Ask agent'",
+  "sizeInSqm": "Size in square meters as number or null",
+  "description": "Full detailed property description text from the main content area (not meta description) - look for the main property description section with detailed text about the property features, rooms, and characteristics",
+  "features": "Array of key features or null",
+  "images": "Array of property image URLs or null",
+  "firstSeen": "Date first listed (ISO format) or null",
+  "nowUtc": "Current date (ISO format) or null",
+  "daysOnMarket": "Number of days the property has been on the market (calculate from 'Added on' date to today) as integer or null"
+}
+
+IMPORTANT SIZE EXTRACTION:
+- Look for size information in the main property details
+- Check for floor plan URLs in the HTML (look for 'floorplans' in JSON data)
+- If you find floor plan URLs, note them in the images array
+- Look for any size measurements in the property description
+- Check for room dimensions or area calculations
+- Extract the FULL property description text, not just meta descriptions
+- Look for the main property description section in the HTML (usually in a div with class containing "description" or similar)
+- Look for phrases like "larger than others", "spacious", "generous", room dimensions
+- The description should be the detailed property text, not the meta description
+- Search for text that starts with "A rare opportunity" or similar detailed property descriptions
+- Convert square feet to square meters (multiply by 0.092903)
+- If size is not available or shows "Ask agent" on the page, return "Ask agent" as the size value
+- This will trigger our smart fallback system to analyze the description and floor plan
+- For daysOnMarket: Look for "Added on" date in the HTML (usually shows as "Added on DD/MM/YYYY" or similar)
+- Convert the "Added on" date to a proper date format and calculate days between then and now
+- Look for text patterns like "Added on 20/08/2025" or "Added on 20th August 2025"
+- Calculate the difference in days between the "Added on" date and today's date
+
+Guidelines:
+- Extract ONLY information that is clearly visible in the HTML
+- For price, extract the number only (no currency symbols)
+- For bedrooms/bathrooms, extract as integers
+- For size, convert to square meters if given in sq ft (multiply by 0.092903)
+- For features, extract key property features as an array
+- For images, extract full image URLs including floor plans
+- If any information is not available, use null
+- Do not invent or guess information
+- Return ONLY valid JSON, no other text
+
+HTML Content:
+${cleanHtml.substring(0, 50000)} // Limit to 50k chars for API limits
+
+IMPORTANT: Look for the main property description section in the HTML. It should contain detailed text about the property features, rooms, and characteristics. Do not use meta descriptions or short summaries.
+`;
+
   try {
-    const body = await request.json();
-    const { rightmoveUrl } = body;
-
-    if (!rightmoveUrl) {
-      return NextResponse.json({
-        success: false,
-        error: 'Rightmove URL is required'
-      });
-    }
-
-    console.log('🏠 Scraping Rightmove property:', rightmoveUrl);
-
-    // Fetch HTML content
-    const response = await fetch(rightmoveUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      }
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: "You are a property data extraction expert. Extract property information from Rightmove HTML. Return only valid JSON."
+        },
+        {
+          role: "user",
+          content: aiPrompt
+        }
+      ],
+      temperature: 0.1,
+      max_tokens: 2000,
+      response_format: { type: "json_object" }
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error: ${response.status}`);
-    }
-
-    const html = await response.text();
-    console.log('✅ Successfully fetched HTML content');
-    console.log('📄 HTML length:', html.length);
-
-    // First, try to extract key data from JSON structure in HTML
-    console.log('🔍 Looking for JSON data in HTML...');
-    let extractedData = {
+    const extractedData = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    console.log('✅ AI extraction completed successfully');
+    
+    // Validate and clean the extracted data
+    return {
+      address: extractedData.address || null,
+      price: extractedData.price ? parseInt(extractedData.price.toString().replace(/[^\d]/g, '')) : null,
+      bedrooms: extractedData.bedrooms ? parseInt(extractedData.bedrooms) : null,
+      bathrooms: extractedData.bathrooms ? parseInt(extractedData.bathrooms) : null,
+      propertyType: extractedData.propertyType || null,
+      size: extractedData.size || null,
+      sizeInSqm: extractedData.sizeInSqm ? parseFloat(extractedData.sizeInSqm) : null,
+      description: extractedData.description || null,
+      features: extractedData.features || null,
+      images: extractedData.images || null,
+      firstSeen: extractedData.firstSeen || null,
+      nowUtc: extractedData.nowUtc || null,
+      daysOnMarket: extractedData.daysOnMarket || null
+    };
+    
+  } catch (error) {
+    console.error('❌ AI extraction failed:', error);
+    return {
       address: null,
       price: null,
       bedrooms: null,
@@ -44,537 +123,520 @@ export async function POST(request: NextRequest) {
       propertyType: null,
       size: null,
       sizeInSqm: null,
-      description: null
+      description: null,
+      features: null,
+      images: null,
+      firstSeen: null,
+      nowUtc: null
     };
+  }
+}
 
-    // Look for JSON data in script tags - use a more robust approach
-    console.log('🔍 Looking for PAGE_MODEL in HTML...');
-    const scriptMatch = html.match(/window\.PAGE_MODEL\s*=\s*({[\s\S]*?});\s*<\/script>/);
-    console.log('🔍 Script match found:', !!scriptMatch);
-    if (scriptMatch) {
+// Fallback: Extract from structured data (JSON-LD, microdata)
+async function extractFromStructuredData(html: string) {
+  console.log('🔍 Trying structured data extraction as fallback...');
+  
+  const fallbackData = {
+    address: null,
+    price: null,
+    bedrooms: null,
+    bathrooms: null,
+    propertyType: null,
+    size: null,
+    sizeInSqm: null
+  };
+
+  try {
+    // Try JSON-LD structured data
+    const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi);
+    if (jsonLdMatch) {
+      for (const match of jsonLdMatch) {
+        try {
+          const jsonLd = JSON.parse(match.replace(/<script[^>]*>|<\/script>/gi, ''));
+          if (jsonLd['@type'] === 'RealEstateAgent' || jsonLd['@type'] === 'Product') {
+            // Extract from JSON-LD
+            if (jsonLd.address) fallbackData.address = jsonLd.address;
+            if (jsonLd.offers?.price) fallbackData.price = parseInt(jsonLd.offers.price);
+          }
+        } catch (e) {
+          // Continue to next JSON-LD block
+        }
+      }
+    }
+
+    // Try window.PAGE_MODEL as last resort
+    const pageModelMatch = html.match(/window\.PAGE_MODEL\s*=\s*({[\s\S]*?});/);
+    if (pageModelMatch && !fallbackData.address) {
       try {
-        const pageModel = JSON.parse(scriptMatch[1]);
-        console.log('📊 Found PAGE_MODEL JSON data');
-        
-        // Extract from propertyData
+        const pageModel = JSON.parse(pageModelMatch[1]);
         if (pageModel.propertyData) {
           const pd = pageModel.propertyData;
+          if (pd.address) fallbackData.address = pd.address;
+          if (pd.price) fallbackData.price = parseInt(pd.price.toString().replace(/[^\d]/g, ''));
+          if (pd.bedrooms) fallbackData.bedrooms = parseInt(pd.bedrooms);
+          if (pd.bathrooms) fallbackData.bathrooms = parseInt(pd.bathrooms);
+          if (pd.propertyType) fallbackData.propertyType = pd.propertyType;
+        }
+      } catch (e) {
+        console.log('❌ Failed to parse PAGE_MODEL:', e);
+      }
+    }
+    
+    console.log('📊 Structured data fallback result:', fallbackData);
+    return fallbackData;
+    
+  } catch (error) {
+    console.error('❌ Structured data extraction failed:', error);
+    return fallbackData;
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { rightmoveUrl } = await request.json();
+    
+    if (!rightmoveUrl) {
+      return NextResponse.json({ error: 'Rightmove URL is required' }, { status: 400 });
+    }
+
+    console.log('🏠 AI-First Scraping for Rightmove property:', rightmoveUrl);
+    
+    // Fetch the HTML content
+    const response = await fetch(rightmoveUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch: ${response.status}`);
+    }
+    
+    const html = await response.text();
+    console.log('✅ Successfully fetched HTML content');
+    console.log('📄 HTML length:', html.length);
+    
+    // AI-First Approach: Use AI to extract all property data
+    console.log('🤖 Using AI to extract property data...');
+    const extractedData = await extractPropertyDataWithAI(html, rightmoveUrl);
+    
+    console.log('📊 AI extracted data:', extractedData);
+    console.log('📅 Days on market extracted:', extractedData.daysOnMarket);
+
+    // Validate that we got the essential data
+    if (!extractedData.address || !extractedData.price) {
+      console.warn('⚠️ AI extraction missing critical data, trying fallback methods...');
+      
+      // Fallback: Try to extract from structured data (JSON-LD, microdata)
+      const fallbackData = await extractFromStructuredData(html);
+      if (fallbackData.address) extractedData.address = fallbackData.address;
+      if (fallbackData.price) extractedData.price = fallbackData.price;
+      if (fallbackData.bedrooms) extractedData.bedrooms = fallbackData.bedrooms;
+      if (fallbackData.bathrooms) extractedData.bathrooms = fallbackData.bathrooms;
+      if (fallbackData.propertyType) extractedData.propertyType = fallbackData.propertyType;
+      if (fallbackData.size) extractedData.size = fallbackData.size;
+      if (fallbackData.sizeInSqm) extractedData.sizeInSqm = fallbackData.sizeInSqm;
+    }
+
+    // Check if we have essential data
+    if (!extractedData.address || !extractedData.price) {
+      console.warn('⚠️ Missing critical data after AI extraction and fallbacks');
+      return NextResponse.json({
+        success: false,
+        error: 'Could not extract essential property data (address and price)',
+        extractedData
+      });
+    }
+
+    // Smart size extraction fallback system
+    console.log('🔍 Debug: Checking smart fallback conditions...');
+    console.log('🔍 extractedData.size:', extractedData.size);
+    console.log('🔍 extractedData.sizeInSqm:', extractedData.sizeInSqm);
+    console.log('🔍 Condition check:', !extractedData.size || !extractedData.sizeInSqm || extractedData.size === 'Ask agent' || extractedData.size === 'Ask Agent' || extractedData.size?.toLowerCase().includes('ask agent'));
+    
+    if (!extractedData.size || !extractedData.sizeInSqm || extractedData.size === 'Ask agent' || extractedData.size === 'Ask Agent' || extractedData.size?.toLowerCase().includes('ask agent')) {
+      console.log('🧮 Size missing or "Ask agent", starting smart fallback analysis...');
+      
+      // Step 1: Try to extract size from property description
+      if (extractedData.description && !extractedData.sizeInSqm) {
+        console.log('📝 Step 1: Analyzing property description for size clues...');
+        
+        try {
+          const descriptionAnalysisPrompt = `
+Analyze this property description and look for any size information, room dimensions, or area measurements:
+
+Description: ${extractedData.description}
+
+Look for:
+- Room dimensions (e.g., "3.5m x 4.2m", "12ft x 15ft")
+- Total area mentions (e.g., "1,200 sq ft", "110 sqm")
+- Size comparisons (e.g., "larger than others on the street")
+- Any numerical measurements that could indicate property size
+
+Return a JSON object with:
+{
+  "foundSize": boolean,
+  "sizeText": "any size information found or null",
+  "sizeInSqm": "size in square meters as number or null",
+  "sizeInSqft": "size in square feet as number or null"
+}
+
+If no size information is found, return foundSize: false.
+`;
+
+          const descriptionResponse = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content: "You are a property analysis expert. Extract size information from property descriptions. Return only valid JSON."
+              },
+              {
+                role: "user",
+                content: descriptionAnalysisPrompt
+              }
+            ],
+            temperature: 0.1,
+            max_tokens: 500,
+            response_format: { type: "json_object" }
+          });
+
+          const descriptionResult = JSON.parse(descriptionResponse.choices[0]?.message?.content || '{}');
+          console.log('📝 Description analysis result:', descriptionResult);
           
-          // Extract address
-          if (pd.address?.displayAddress) {
-            extractedData.address = pd.address.displayAddress;
+          if (descriptionResult.foundSize && descriptionResult.sizeInSqm) {
+            extractedData.sizeInSqm = parseFloat(descriptionResult.sizeInSqm);
+            extractedData.size = descriptionResult.sizeText || `${Math.round(descriptionResult.sizeInSqm / 0.092903).toLocaleString()} sq ft`;
+            console.log('✅ Size extracted from description:', extractedData.size, `(${extractedData.sizeInSqm} sqm)`);
           }
+        } catch (error) {
+          console.log('❌ Description analysis failed:', error);
+        }
+      }
+      
+      // Step 2: If still no size, analyze floor plan image
+      if (!extractedData.sizeInSqm) {
+        console.log('🖼️ Step 2: Analyzing floor plan image with computer vision...');
+        
+        try {
+          // Extract floor plan URLs - improved pattern matching
+      const floorplanUrlPattern = /https:\/\/media\.rightmove\.co\.uk\/[^"]*FLP[^"]*\.(?:png|jpg|jpeg)/gi;
+      const floorplanUrls = [...html.matchAll(floorplanUrlPattern)].map(match => match[0]);
           
-          // Extract price
-          if (pd.prices?.primaryPrice) {
-            const priceStr = pd.prices.primaryPrice.replace(/[£,]/g, '');
-            extractedData.price = parseInt(priceStr);
-          }
-          
-          // Extract bedrooms and bathrooms
-          if (pd.bedrooms) extractedData.bedrooms = pd.bedrooms;
-          if (pd.bathrooms) extractedData.bathrooms = pd.bathrooms;
-          
-          // Extract property type
-          if (pd.propertySubType) {
-            extractedData.propertyType = pd.propertySubType;
-          }
-          
-          // Extract size from sizings array
-          if (pd.sizings && Array.isArray(pd.sizings)) {
-            const sqftSize = pd.sizings.find(s => s.unit === 'sqft');
-            const sqmSize = pd.sizings.find(s => s.unit === 'sqm');
-            
-            if (sqftSize) {
-              extractedData.size = `${sqftSize.minimumSize.toLocaleString()} sq ft`;
-              extractedData.sizeInSqm = sqmSize ? sqmSize.minimumSize : Math.round(sqftSize.minimumSize * 0.092903);
+          // Also try to extract from JSON data structure
+          if (floorplanUrls.length === 0) {
+            const floorplanJsonMatch = html.match(/"floorplans":\[([^\]]*)\]/);
+            if (floorplanJsonMatch) {
+              const floorplanJsonUrls = [...floorplanJsonMatch[0].matchAll(/https:\/\/media\.rightmove\.co\.uk\/[^"]*\.(?:png|jpg|jpeg)/gi)];
+              floorplanUrls.push(...floorplanJsonUrls.map(match => match[0]));
             }
           }
           
-          // Extract description
-          if (pd.text?.description) {
-            extractedData.description = pd.text.description;
+          // Additional fallback: look for any image URLs that might be floor plans
+          if (floorplanUrls.length === 0) {
+            const allImageUrls = [...html.matchAll(/https:\/\/media\.rightmove\.co\.uk\/[^"]*\.(?:png|jpg|jpeg)/gi)];
+            const potentialFloorplans = allImageUrls
+              .map(match => match[0])
+              .filter(url => url.includes('FLP') || url.includes('floorplan') || url.includes('floor'));
+            floorplanUrls.push(...potentialFloorplans);
           }
-        }
-        
-        console.log('📊 Extracted from JSON:', extractedData);
-      } catch (error) {
-        console.log('❌ Failed to parse JSON data:', error);
-        console.log('🔍 Trying alternative extraction methods...');
-        
-        // Fallback: try to extract specific fields using regex
-        const addressMatch = html.match(/"displayAddress":"([^"]+)"/);
-        if (addressMatch) extractedData.address = addressMatch[1];
-        
-        const priceMatch = html.match(/"primaryPrice":"£([0-9,]+)"/);
-        if (priceMatch) extractedData.price = parseInt(priceMatch[1].replace(/,/g, ''));
-        
-        const bedroomsMatch = html.match(/"bedrooms":(\d+)/);
-        if (bedroomsMatch) extractedData.bedrooms = parseInt(bedroomsMatch[1]);
-        
-        const bathroomsMatch = html.match(/"bathrooms":(\d+)/);
-        if (bathroomsMatch) extractedData.bathrooms = parseInt(bathroomsMatch[1]);
-        
-        const propertyTypeMatch = html.match(/"propertySubType":"([^"]+)"/);
-        if (propertyTypeMatch) extractedData.propertyType = propertyTypeMatch[1];
-        
-        // Extract size from sizings array
-        const sqftMatch = html.match(/"unit":"sqft"[^}]*"minimumSize":(\d+)/);
-        const sqmMatch = html.match(/"unit":"sqm"[^}]*"minimumSize":(\d+)/);
-        if (sqftMatch) {
-          extractedData.size = `${parseInt(sqftMatch[1]).toLocaleString()} sq ft`;
-          if (sqmMatch) {
-            extractedData.sizeInSqm = parseInt(sqmMatch[1]);
+      
+      console.log('🖼️ Found floor plan URLs:', floorplanUrls);
+      console.log('🖼️ Total floor plan URLs found:', floorplanUrls.length);
+      
+      if (floorplanUrls.length > 0) {
+        try {
+          // Download and analyze the first floor plan image
+          const floorplanUrl = floorplanUrls[0];
+          console.log('📥 Downloading floor plan image:', floorplanUrl);
+          
+          const imageResponse = await fetch(floorplanUrl);
+          const imageBuffer = await imageResponse.arrayBuffer();
+          const imageBase64 = Buffer.from(imageBuffer).toString('base64');
+          
+          console.log('🖼️ Analyzing floor plan image with computer vision...');
+          
+          const visionResponse = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: "Analyze this floor plan image and extract room dimensions. Look for measurements in meters or feet (e.g., '3.5m x 4.2m' or '12ft x 15ft'). Calculate the total floor area by summing all room areas. Return a JSON object with totalSizeSqm, totalSizeSqft, roomBreakdown array, and calculationMethod."
+                  },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: `data:image/png;base64,${imageBase64}`
+                    }
+                  }
+                ]
+              }
+            ],
+            temperature: 0.1
+          });
+          
+          const visionContent = visionResponse.choices[0].message.content || '{}';
+          console.log('🖼️ Raw vision response:', visionContent);
+          
+          let visionResult;
+          try {
+            visionResult = JSON.parse(visionContent);
+          } catch (parseError) {
+            console.log('❌ Failed to parse vision response as JSON:', parseError);
+            console.log('🔄 Trying to extract JSON from response...');
+            
+            // Try to extract JSON from the response if it's wrapped in text
+            const jsonMatch = visionContent.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              try {
+                visionResult = JSON.parse(jsonMatch[0]);
+                console.log('✅ Successfully extracted JSON from response');
+              } catch (secondError) {
+                console.log('❌ Still failed to parse extracted JSON:', secondError);
+                visionResult = { totalSizeSqm: null, error: 'Failed to parse AI response' };
+              }
+            } else {
+              console.log('❌ No JSON found in response');
+              visionResult = { totalSizeSqm: null, error: 'No JSON found in AI response' };
+            }
+          }
+          
+          console.log('🖼️ Floor plan image analysis result:', visionResult);
+          
+          if (visionResult.totalSizeSqm && visionResult.totalSizeSqm > 0) {
+            // Implement fail-safes for AI calculation accuracy
+            if (visionResult.roomBreakdown && visionResult.roomBreakdown.length > 0) {
+              const manualSum = visionResult.roomBreakdown.reduce((sum, room) => sum + (room.areaSqm || 0), 0);
+              const aiTotal = visionResult.totalSizeSqm;
+              const discrepancy = Math.abs(aiTotal - manualSum);
+              const discrepancyPercentage = (discrepancy / aiTotal) * 100;
+              
+              console.log('🔍 FAIL-SAFE 1: Manual verification:');
+              console.log('📐 Manual sum of rooms:', manualSum, 'sqm');
+              console.log('🤖 AI total:', aiTotal, 'sqm');
+              console.log('📊 Discrepancy:', discrepancy, 'sqm');
+              console.log('📈 Discrepancy percentage:', discrepancyPercentage.toFixed(1), '%');
+              
+              if (discrepancyPercentage > 5) {
+                console.log('⚠️ FAIL-SAFE TRIGGERED: Using manual calculation instead of AI total');
+                extractedData.sizeInSqm = Math.round(manualSum * 100) / 100;
+                extractedData.size = `${Math.round(manualSum / 0.092903).toLocaleString()} sq ft`;
+                console.log('✅ Final corrected size:', extractedData.size, `(${extractedData.sizeInSqm} sqm)`);
+              } else {
+                extractedData.sizeInSqm = visionResult.totalSizeSqm;
+                extractedData.size = `${Math.round(visionResult.totalSizeSqm / 0.092903).toLocaleString()} sq ft`;
+                console.log('✅ Using AI calculated size:', extractedData.size, `(${extractedData.sizeInSqm} sqm)`);
+              }
+              
+              // Additional fail-safes
+              if (extractedData.sizeInSqm < 50 || extractedData.sizeInSqm > 500) {
+                console.log('⚠️ FAIL-SAFE 2: Size outside reasonable range (50-500 sqm)');
+              }
+              
+              // Verify individual room calculations
+              for (const room of visionResult.roomBreakdown) {
+                if (room.dimensions && room.areaSqm) {
+                  const dimMatch = room.dimensions.match(/(\d+(?:\.\d+)?)\s*[mx]\s*(\d+(?:\.\d+)?)/);
+                  if (dimMatch) {
+                    const length = parseFloat(dimMatch[1]);
+                    const width = parseFloat(dimMatch[2]);
+                    const expectedArea = length * width;
+                    const actualArea = room.areaSqm;
+                    const roomDiscrepancy = Math.abs(expectedArea - actualArea);
+                    
+                    if (roomDiscrepancy > 0.5) {
+                      console.log('⚠️ FAIL-SAFE 3: Room calculation discrepancy for', room.room, ':', roomDiscrepancy.toFixed(2), 'sqm');
+                    }
+                  }
+                }
+              }
+            } else {
+              extractedData.sizeInSqm = visionResult.totalSizeSqm;
+              extractedData.size = `${Math.round(visionResult.totalSizeSqm / 0.092903).toLocaleString()} sq ft`;
+              console.log('✅ Using AI calculated size (no room breakdown):', extractedData.size, `(${extractedData.sizeInSqm} sqm)`);
+            }
+          }
+        } catch (error) {
+          console.log('❌ Floor plan analysis failed:', error);
+            }
           } else {
-            extractedData.sizeInSqm = Math.round(parseInt(sqftMatch[1]) * 0.092903);
+            console.log('⚠️ No floor plan URLs found for analysis');
+          }
+        } catch (error) {
+          console.log('❌ Floor plan URL extraction failed:', error);
+        }
+      }
+    }
+
+    // Fallback: Extract days on market if AI didn't find it
+    if (!extractedData.daysOnMarket) {
+      console.log('📅 AI didn\'t extract days on market, trying regex fallback...');
+      
+      // Look for "Added on" or "Reduced on" date patterns
+      // PRIORITY: Original listing date first, then reduction date
+      const addedOnPatterns = [
+        /"added":"(\d{8})"/i,  // JSON format: "added":"20240419" - ORIGINAL LISTING DATE
+        /Added on (\d{1,2}\/\d{1,2}\/\d{4})/i,
+        /Added on (\d{1,2}th \w+ \d{4})/i,
+        /Added on (\d{1,2} \w+ \d{4})/i,
+        /Added on (\d{4}-\d{2}-\d{2})/i,
+        /"listingUpdateReason":"Added on (\d{1,2}\/\d{1,2}\/\d{4})"/i,
+        // Only use reduction date if no original date found
+        /Reduced on (\d{1,2}\/\d{1,2}\/\d{4})/i,
+        /Reduced on (\d{1,2}th \w+ \d{4})/i,
+        /Reduced on (\d{1,2} \w+ \d{4})/i,
+        /Reduced on (\d{4}-\d{2}-\d{2})/i,
+        /"listingUpdateReason":"Reduced on (\d{1,2}\/\d{1,2}\/\d{4})"/i
+      ];
+      
+      // Also try a more general search for any "Added on" or "Reduced on" text
+      const addedOnText = html.match(/Added on [^<>\n]+/i);
+      const reducedOnText = html.match(/Reduced on [^<>\n]+/i);
+      if (addedOnText) {
+        console.log('🔍 Found "Added on" text:', addedOnText[0]);
+      }
+      if (reducedOnText) {
+        console.log('🔍 Found "Reduced on" text:', reducedOnText[0]);
+      }
+      
+      console.log('🔍 Searching for "Added on" or "Reduced on" patterns in HTML...');
+      console.log('📄 HTML length:', html.length);
+      
+      for (const pattern of addedOnPatterns) {
+        const match = html.match(pattern);
+        if (match) {
+          try {
+            let addedDate;
+            
+            // Handle YYYYMMDD format (e.g., "20250820")
+            if (match[1].length === 8 && /^\d{8}$/.test(match[1])) {
+              const year = match[1].substring(0, 4);
+              const month = match[1].substring(4, 6);
+              const day = match[1].substring(6, 8);
+              addedDate = new Date(`${year}-${month}-${day}`);
+            } else if (match[1].includes('/')) {
+              // Handle DD/MM/YYYY format (e.g., "16/07/2025")
+              const parts = match[1].split('/');
+              if (parts.length === 3) {
+                const day = parts[0].padStart(2, '0');
+                const month = parts[1].padStart(2, '0');
+                const year = parts[2];
+                addedDate = new Date(`${year}-${month}-${day}`);
+              } else {
+                addedDate = new Date(match[1]);
+              }
+            } else {
+              addedDate = new Date(match[1]);
+            }
+            
+            const today = new Date();
+            const daysDiff = Math.floor((today - addedDate) / (1000 * 60 * 60 * 24));
+            
+            if (daysDiff >= 0) {
+              extractedData.daysOnMarket = daysDiff;
+              extractedData.firstSeen = addedDate.toISOString();
+              console.log('✅ Days on market calculated via regex:', daysDiff, 'days');
+              console.log('📅 Added date:', addedDate.toISOString());
+              console.log('📊 Date source:', match[0].includes('added') ? 'Original listing date (JSON)' : 
+                         match[0].includes('Reduced') ? 'Reduction date (fallback)' : 'Added on date');
+              break;
+            }
+          } catch (error) {
+            console.log('❌ Date parsing failed:', error);
           }
         }
-        
-        console.log('📊 Extracted from regex fallback:', extractedData);
-      }
-    } else {
-      console.log('❌ No PAGE_MODEL found, trying direct regex extraction...');
-      
-      // Direct regex extraction as fallback
-      const addressMatch = html.match(/"displayAddress":"([^"]+)"/);
-      if (addressMatch) extractedData.address = addressMatch[1];
-      
-      const priceMatch = html.match(/"primaryPrice":"£([0-9,]+)"/);
-      if (priceMatch) extractedData.price = parseInt(priceMatch[1].replace(/,/g, ''));
-      
-      const bedroomsMatch = html.match(/"bedrooms":(\d+)/);
-      if (bedroomsMatch) extractedData.bedrooms = parseInt(bedroomsMatch[1]);
-      
-      const bathroomsMatch = html.match(/"bathrooms":(\d+)/);
-      if (bathroomsMatch) extractedData.bathrooms = parseInt(bathroomsMatch[1]);
-      
-      const propertyTypeMatch = html.match(/"propertySubType":"([^"]+)"/);
-      if (propertyTypeMatch) extractedData.propertyType = propertyTypeMatch[1];
-      
-      // Extract size from sizings array
-      const sqftMatch = html.match(/"unit":"sqft"[^}]*"minimumSize":(\d+)/);
-      const sqmMatch = html.match(/"unit":"sqm"[^}]*"minimumSize":(\d+)/);
-      if (sqftMatch) {
-        extractedData.size = `${parseInt(sqftMatch[1]).toLocaleString()} sq ft`;
-        if (sqmMatch) {
-          extractedData.sizeInSqm = parseInt(sqmMatch[1]);
-        } else {
-          extractedData.sizeInSqm = Math.round(parseInt(sqftMatch[1]) * 0.092903);
-        }
-      }
-      
-      console.log('📊 Extracted from direct regex:', extractedData);
-    }
-
-    // If size is still missing, try to extract from floor plan data
-    if (!extractedData.size || !extractedData.sizeInSqm) {
-      console.log('🔍 Size missing, checking floor plan data...');
-      
-      // Look for floor plan size information
-      const floorplanSizeMatch = html.match(/"floorplans":\[[^\]]*"url":"([^"]*floorplan[^"]*)"[^\]]*\]/i);
-      if (floorplanSizeMatch) {
-        console.log('📐 Found floor plan URL:', floorplanSizeMatch[1]);
-      }
-      
-      // Look for size in floor plan captions or descriptions
-      const floorplanCaptionMatch = html.match(/"floorplans":\[[^\]]*"caption":"([^"]*sq[^"]*)"[^\]]*\]/i);
-      if (floorplanCaptionMatch) {
-        console.log('📐 Found floor plan caption with size:', floorplanCaptionMatch[1]);
-        const sizeMatch = floorplanCaptionMatch[1].match(/(\d+(?:,\d+)*)\s*sq\s*ft/i);
-        if (sizeMatch) {
-          extractedData.size = `${sizeMatch[1]} sq ft`;
-          const sqft = parseInt(sizeMatch[1].replace(/,/g, ''));
-          extractedData.sizeInSqm = Math.round(sqft * 0.092903);
-          console.log('📐 Extracted size from floor plan:', extractedData.size);
-        }
-      }
-      
-      // Look for any size mentions in the HTML that we might have missed
-      const anySizeMatch = html.match(/(\d+(?:,\d+)*)\s*sq\s*ft/i) || html.match(/(\d+)\s*sq\s*m/i);
-      if (anySizeMatch && !extractedData.size) {
-        console.log('📐 Found size mention in HTML:', anySizeMatch[0]);
-        if (anySizeMatch[0].includes('sq ft')) {
-          extractedData.size = anySizeMatch[0];
-          const sqft = parseInt(anySizeMatch[1].replace(/,/g, ''));
-          extractedData.sizeInSqm = Math.round(sqft * 0.092903);
-        } else if (anySizeMatch[0].includes('sq m')) {
-          extractedData.sizeInSqm = parseInt(anySizeMatch[1]);
-          extractedData.size = `${Math.round(parseInt(anySizeMatch[1]) / 0.092903).toLocaleString()} sq ft`;
-        }
-        console.log('📐 Extracted size from HTML mention:', extractedData.size);
       }
     }
 
-    // Special case: Use known accurate dimensions for this specific property
-    if (rightmoveUrl && rightmoveUrl.includes('147018689')) {
-      console.log('🔧 Using known accurate dimensions for property 147018689...');
-      extractedData.size = "962 sq ft";
-      extractedData.sizeInSqm = 89;
-      console.log('✅ Applied accurate size:', extractedData.size, `(${extractedData.sizeInSqm} sqm)`);
-    }
-    // If size is still missing and we have a floor plan, try AI calculation from room dimensions
-    else if ((!extractedData.size || !extractedData.sizeInSqm) && html.includes('floorplan')) {
-      console.log('🧮 Size still missing, attempting AI calculation from floor plan room dimensions...');
+    // Use OpenAI API to extract missing property details
+    const missingFields = [];
+    if (!extractedData.bedrooms) missingFields.push('bedrooms');
+    if (!extractedData.bathrooms) missingFields.push('bathrooms');
+    if (!extractedData.propertyType) missingFields.push('propertyType');
+    if (!extractedData.description) missingFields.push('description');
+
+    if (missingFields.length > 0) {
+      console.log('🤖 Missing fields, calling OpenAI for:', missingFields);
       
-      // First try to find room dimensions in HTML text
-      const floorplanCalculationPrompt = `
-You are a property size calculation expert. Analyze this Rightmove property listing HTML to find room dimensions in floor plans or property descriptions, then calculate the total property size.
-
-${html.substring(0, 25000)} // Limit HTML to first 25k chars
-
-INSTRUCTIONS:
-1. Look for room dimensions in the HTML (e.g., "7m x 3m", "12ft x 8ft", "4.5m x 2.5m")
-2. Calculate the area of each room (length × width)
-3. Add up all room areas to get total property size
-4. Convert to both square meters and square feet
-5. Return ONLY a JSON object with this structure:
-
-{
-  "totalSizeSqm": <number>,
-  "totalSizeSqft": <number>,
-  "roomBreakdown": [
-    {"room": "<room name>", "dimensions": "<dimensions>", "areaSqm": <number>}
-  ],
-  "calculationMethod": "<how you calculated it>"
-}
-
-If no room dimensions are found, return:
-{
-  "totalSizeSqm": null,
-  "totalSizeSqft": null,
-  "roomBreakdown": [],
-  "calculationMethod": "No room dimensions found in floor plan or description"
-}
-
-Be precise with calculations and only use dimensions that are clearly stated in the HTML.
-`;
-
       try {
-        const floorplanCompletion = await openai.chat.completions.create({
+        const aiResponse = await openai.chat.completions.create({
           model: "gpt-4o-mini",
           messages: [
             {
               role: "system",
-              content: "You are a property size calculation expert. Calculate total property size from room dimensions. Return only valid JSON."
+              content: "You are a property analysis expert. Extract missing property information from Rightmove HTML. Return only valid JSON."
             },
             {
               role: "user",
-              content: floorplanCalculationPrompt
+              content: `
+Extract the following missing fields from this Rightmove property page:
+
+Missing fields: ${missingFields.join(', ')}
+
+HTML: ${html.substring(0, 30000)}
+
+Return a JSON object with the missing fields only. Use null if not found.
+`
             }
           ],
           temperature: 0.1,
-          max_tokens: 800,
-          response_format: { type: "json_object" },
+          max_tokens: 1000,
+          response_format: { type: "json_object" }
         });
-
-        const floorplanData = JSON.parse(floorplanCompletion.choices[0]?.message?.content || '{}');
-        console.log('🧮 AI floor plan calculation result:', floorplanData);
         
-        if (floorplanData.totalSizeSqm && floorplanData.totalSizeSqft) {
-          extractedData.size = `${floorplanData.totalSizeSqft.toLocaleString()} sq ft`;
-          extractedData.sizeInSqm = Math.round(floorplanData.totalSizeSqm);
-          console.log('🧮 Calculated size from room dimensions:', extractedData.size);
-        }
+        const aiResult = JSON.parse(aiResponse.choices[0]?.message?.content || '{}');
+        console.log('🤖 OpenAI extracted data:', aiResult);
+
+        // Merge the AI results
+        if (aiResult.bedrooms) extractedData.bedrooms = parseInt(aiResult.bedrooms);
+        if (aiResult.bathrooms) extractedData.bathrooms = parseInt(aiResult.bathrooms);
+        if (aiResult.propertyType) extractedData.propertyType = aiResult.propertyType;
+        if (aiResult.description) extractedData.description = aiResult.description;
+        
       } catch (error) {
-        console.log('❌ AI floor plan calculation failed:', error);
-      }
-
-      // If still no size found, try to download and analyze floor plan images
-      if (!extractedData.size || !extractedData.sizeInSqm) {
-        console.log('🖼️ No size from HTML, attempting to analyze floor plan images...');
-        
-        try {
-          // Extract floor plan URLs from HTML - try multiple patterns
-          const floorplanUrls = [];
-          
-          // Pattern 1: Look for floorplans array with FLP in URL
-          const floorplanMatches = html.match(/"floorplans":\[([^\]]*)\]/g);
-          if (floorplanMatches) {
-            for (const match of floorplanMatches) {
-              // Look for URLs with FLP (floor plan) in the filename
-              const urlMatches = match.match(/"url":"([^"]*FLP[^"]*\.(?:jpeg|jpg|png|gif))"/gi);
-              if (urlMatches) {
-                floorplanUrls.push(...urlMatches.map(m => m.match(/"url":"([^"]*)"/)[1]));
-              }
-            }
-          }
-          
-          // Pattern 2: Look for any image URLs containing "FLP" (floor plan)
-          const flpMatches = html.match(/"url":"([^"]*FLP[^"]*\.(?:jpeg|jpg|png|gif))"/gi);
-          if (flpMatches) {
-            floorplanUrls.push(...flpMatches.map(m => m.match(/"url":"([^"]*)"/)[1]));
-          }
-          
-          // Pattern 3: Look for floor plan images with "floorplan" in URL
-          const generalFloorplanMatches = html.match(/"url":"([^"]*floorplan[^"]*\.(?:jpeg|jpg|png|gif))"/gi);
-          if (generalFloorplanMatches) {
-            floorplanUrls.push(...generalFloorplanMatches.map(m => m.match(/"url":"([^"]*)"/)[1]));
-          }
-          
-          // Pattern 4: Look for floor plan images in different structures
-          const altFloorplanMatches = html.match(/https:\/\/[^"]*FLP[^"]*\.(?:jpeg|jpg|png|gif)/gi);
-          if (altFloorplanMatches) {
-            floorplanUrls.push(...altFloorplanMatches);
-          }
-          
-          // Remove duplicates
-          const uniqueFloorplanUrls = [...new Set(floorplanUrls)];
-          
-          console.log('🖼️ Found floor plan URLs:', uniqueFloorplanUrls);
-          console.log('🖼️ Total floor plan URLs found:', uniqueFloorplanUrls.length);
-          
-          if (uniqueFloorplanUrls.length > 0) {
-            // Download the first floor plan image
-            const floorplanUrl = uniqueFloorplanUrls[0];
-            console.log('📥 Downloading floor plan image:', floorplanUrl);
-            
-            const imageResponse = await fetch(floorplanUrl, {
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-              }
-            });
-            
-            if (imageResponse.ok) {
-              const imageBuffer = await imageResponse.arrayBuffer();
-              const imageBase64 = Buffer.from(imageBuffer).toString('base64');
-              
-              console.log('🖼️ Analyzing floor plan image with computer vision...');
-              
-              // Use GPT-4V to analyze the floor plan image
-              const imageAnalysisPrompt = `
-You are a property floor plan analysis expert. Analyze this floor plan image to extract room dimensions and calculate the total property size with EXACT ACCURACY.
-
-CRITICAL INSTRUCTIONS FOR ACCURACY:
-1. Look VERY carefully for room dimensions written on the floor plan - they are usually in small text
-2. Look for dimensions in both imperial (feet/inches) and metric (meters) formats
-3. Common patterns: "13'6\" x 11'11\"", "4.12m x 3.64m", "12'10\" x 9'7\""
-4. Dimensions are often written INSIDE each room or next to room labels
-5. Look for measurements like "13'6\"", "11'11\"", "4.12m", "3.64m" etc.
-6. Calculate the area of each room (length × width) with PRECISE calculations
-7. Add up all room areas to get total property size
-8. Convert to both square meters and square feet using EXACT conversion (1 sq ft = 0.092903 sq m)
-9. DOUBLE-CHECK your calculations for accuracy
-10. Return ONLY a JSON object with this structure:
-
-{
-  "totalSizeSqm": <number>,
-  "totalSizeSqft": <number>,
-  "roomBreakdown": [
-    {"room": "<room name>", "dimensions": "<exact dimensions found>", "areaSqm": <number>, "areaSqft": <number>}
-  ],
-  "calculationMethod": "<detailed step-by-step calculation>",
-  "verification": "<cross-check your total against individual room areas>"
-}
-
-If no room dimensions are visible in the image, return:
-{
-  "totalSizeSqm": null,
-  "totalSizeSqft": null,
-  "roomBreakdown": [],
-  "calculationMethod": "No room dimensions visible in floor plan image"
-}
-
-CRITICAL ACCURACY REQUIREMENTS:
-- Use EXACT dimensions as written on the floor plan
-- Calculate areas with PRECISION (length × width)
-- Convert using EXACT conversion factors
-- Verify your total by summing individual room areas
-- Be extremely careful with decimal places and rounding
-- If dimensions are unclear, state exactly what you can see
-
-IMPORTANT: Look very carefully at the image - dimensions are often in small text within each room. Be thorough and precise in your analysis.
-`;
-
-              const imageAnalysisCompletion = await openai.chat.completions.create({
-                model: "gpt-4o", // Use GPT-4o for image analysis
-                messages: [
-                  {
-                    role: "system",
-                    content: "You are a property floor plan analysis expert. Analyze floor plan images to extract room dimensions and calculate total property size. Return only valid JSON."
-                  },
-                  {
-                    role: "user",
-                    content: [
-                      {
-                        type: "text",
-                        text: imageAnalysisPrompt
-                      },
-                      {
-                        type: "image_url",
-                        image_url: {
-                          url: `data:image/jpeg;base64,${imageBase64}`
-                        }
-                      }
-                    ]
-                  }
-                ],
-                temperature: 0.1,
-                max_tokens: 1000,
-                response_format: { type: "json_object" },
-              });
-
-              const imageAnalysisData = JSON.parse(imageAnalysisCompletion.choices[0]?.message?.content || '{}');
-              console.log('🖼️ Floor plan image analysis result:', imageAnalysisData);
-              
-              if (imageAnalysisData.totalSizeSqm && imageAnalysisData.totalSizeSqft) {
-                // Validate the calculation accuracy
-                const expectedSqm = 89.42; // Based on manual calculation from floor plan
-                const aiSqm = imageAnalysisData.totalSizeSqm;
-                const discrepancy = Math.abs(aiSqm - expectedSqm);
-                const discrepancyPercent = (discrepancy / expectedSqm) * 100;
-                
-                console.log('🔍 Accuracy validation:');
-                console.log('📐 Expected (manual calculation):', expectedSqm, 'sqm');
-                console.log('🤖 AI calculation:', aiSqm, 'sqm');
-                console.log('📊 Discrepancy:', discrepancy.toFixed(2), 'sqm');
-                console.log('📈 Discrepancy percentage:', discrepancyPercent.toFixed(1), '%');
-                
-                if (discrepancyPercent > 10) {
-                  console.log('⚠️ WARNING: Large discrepancy detected! AI result may be inaccurate.');
-                  console.log('🖼️ Room breakdown from AI:', imageAnalysisData.roomBreakdown);
-                  console.log('🧮 Calculation method:', imageAnalysisData.calculationMethod);
-                  console.log('✅ Verification:', imageAnalysisData.verification);
-                  
-                  // For this specific property, use the known accurate calculation
-                  if (req.body.rightmoveUrl && req.body.rightmoveUrl.includes('147018689')) {
-                    console.log('🔧 Using known accurate calculation for this property...');
-                    const accurateSqm = 89.42;
-                    const accurateSqft = Math.round(accurateSqm / 0.092903);
-                    extractedData.size = `${accurateSqft.toLocaleString()} sq ft`;
-                    extractedData.sizeInSqm = Math.round(accurateSqm);
-                    console.log('✅ Applied accurate size:', extractedData.size, `(${accurateSqm} sqm)`);
-                    return; // Skip the AI result for this property
-                  }
-                }
-                
-                extractedData.size = `${imageAnalysisData.totalSizeSqft.toLocaleString()} sq ft`;
-                extractedData.sizeInSqm = Math.round(imageAnalysisData.totalSizeSqm);
-                console.log('🖼️ Calculated size from floor plan image:', extractedData.size);
-              }
-            } else {
-              console.log('❌ Failed to download floor plan image:', imageResponse.status);
-            }
-          }
-        } catch (error) {
-          console.log('❌ Floor plan image analysis failed:', error);
-        }
+        console.log('❌ OpenAI extraction failed:', error);
       }
     }
-
-    // Use OpenAI API to extract any missing property details from HTML
-    console.log('🤖 Using OpenAI API to extract missing property details...');
-    
-    const extractionPrompt = `
-You are a property data extraction expert. Extract the following information from this Rightmove property listing HTML:
-
-${html.substring(0, 20000)} // Limit HTML to first 20k chars to stay within token limits
-
-Return a JSON object with this exact structure:
-{
-  "address": "Full property address or null",
-  "price": "Price as number (e.g., 1150000) or null",
-  "bedrooms": "Number as integer or null",
-  "bathrooms": "Number as integer or null",
-  "propertyType": "Type of property (e.g., Detached, Semi-Detached, etc.) or null",
-  "size": "Size in original format (e.g., '3,333 sq ft') or null",
-  "sizeInSqm": "Size in square meters as number or null",
-  "description": "Property description or null"
-}
-
-Guidelines:
-- Extract only information that is clearly visible in the HTML
-- For price, extract the number only (no currency symbols)
-- For bedrooms/bathrooms, extract as integers
-- For size, look for patterns like "3,333 sq ft", "310 sq m", "SIZE" sections
-- IMPORTANT: If size is not in main property details, check floor plan data, captions, or any size mentions in the HTML
-- Look for floor plan captions that might contain size information
-- For sizeInSqm, convert to square meters if needed (sq ft * 0.092903)
-- Look for BATHROOMS, SIZE, PROPERTY TYPE sections in the HTML
-- If any information is not available, use null
-- Do not invent facts
-- Return only valid JSON
-`;
-
-    // Only call OpenAI if we're missing critical data
-    const missingFields = Object.entries(extractedData).filter(([key, value]) => value === null);
-    
-    if (missingFields.length > 0) {
-      console.log('🤖 Missing fields, calling OpenAI for:', missingFields.map(([key]) => key));
-      
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "You are a property data extraction expert. Extract property information from HTML. Return only valid JSON."
-          },
-          {
-            role: "user",
-            content: extractionPrompt
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 500,
-        response_format: { type: "json_object" },
-      });
-
-      const aiExtractedData = JSON.parse(completion.choices[0]?.message?.content || '{}');
-      console.log('🤖 OpenAI extracted data:', aiExtractedData);
-      
-      // Merge AI data with extracted data, only filling in missing fields
-      Object.keys(extractedData).forEach(key => {
-        if (extractedData[key] === null && aiExtractedData[key] !== null) {
-          extractedData[key] = aiExtractedData[key];
-        }
-      });
-    } else {
-      console.log('✅ All data extracted from JSON, no need for OpenAI');
-    }
-
-    // Create a structured listing text using OpenAI extracted data
-    const listingText = `${extractedData.address || 'Property Address'}
-
-Price: £${extractedData.price || 'Price not found'}
-
-Property Type: ${extractedData.propertyType || 'Type not specified'}
-Bedrooms: ${extractedData.bedrooms || 'Not specified'}
-Bathrooms: ${extractedData.bathrooms || 'Not specified'}
-Size: ${extractedData.size || 'Not specified'}
-Size in square meters: ${extractedData.sizeInSqm || 'Not specified'}
-
-Description:
-${extractedData.description || 'No description available'}
-
-Additional details extracted from Rightmove listing using OpenAI API.`;
 
     // Extract property images
-    const imageUrls = [];
-    const imageMatches = html.match(/"images":\[([^\]]*)\]/g);
-    if (imageMatches) {
-      for (const match of imageMatches) {
-        const urlMatches = match.match(/"url":"([^"]*\.(?:jpeg|jpg|png|gif))"/gi);
-        if (urlMatches) {
-          imageUrls.push(...urlMatches.map(m => m.match(/"url":"([^"]*)"/)[1]));
-        }
-      }
-    }
-    
+    const imageUrlPattern = /https:\/\/media\.rightmove\.co\.uk\/[^"]*IMG[^"]*\.(?:png|jpg|jpeg)/gi;
+    const imageUrls = [...html.matchAll(imageUrlPattern)].map(match => match[0]).slice(0, 5);
     console.log('📸 Found property images:', imageUrls.length);
 
-    return NextResponse.json({
+    // Final validation
+    const finalData = {
       success: true,
-      listingText: listingText,
-      propertyDetails: extractedData,
-      images: imageUrls.slice(0, 5) // Limit to first 5 images for analysis
-    });
+      propertyDetails: {
+        address: extractedData.address,
+        price: extractedData.price,
+        bedrooms: extractedData.bedrooms,
+        bathrooms: extractedData.bathrooms,
+        propertyType: extractedData.propertyType,
+        size: extractedData.size,
+        sizeInSqm: extractedData.sizeInSqm,
+        description: extractedData.description,
+        features: extractedData.features,
+        firstSeen: extractedData.firstSeen,
+        nowUtc: extractedData.nowUtc || new Date().toISOString(),
+        daysOnMarket: extractedData.daysOnMarket
+      },
+      propertyImages: imageUrls,
+      listingText: html.substring(0, 10000), // First 10k chars for analysis
+      extractedData
+    };
+
+    console.log('✅ Final extracted data:', finalData.propertyDetails);
+    return NextResponse.json(finalData);
 
   } catch (error) {
-    console.error('Rightmove scraping error:', error);
-    
-    return NextResponse.json({
+    console.error('❌ Scraping failed:', error);
+    return NextResponse.json({ 
       success: false,
-      error: 'Failed to scrape Rightmove property',
-      listingText: null
+      error: error.message,
+      extractedData: null
     });
   }
 }

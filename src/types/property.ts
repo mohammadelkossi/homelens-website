@@ -9,6 +9,7 @@ export interface PropertyData {
   size: number; // in square meters
   description: string;
   images: string[];
+  listingDate?: string; // ISO date string when property was first listed
   coordinates?: {
     lat: number;
     lng: number;

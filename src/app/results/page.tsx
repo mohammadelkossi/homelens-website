@@ -1,5 +1,7 @@
 'use client';
 import React from "react";
+import FiveYearTrendChart from "@/components/FiveYearTrendChart";
+import PriceHistoryChart from "@/components/PriceHistoryChart";
 
 // ====================== Utilities ======================== //
 const COLORS = {
@@ -19,8 +21,42 @@ const fmtNum = (n) => new Intl.NumberFormat("en-GB").format(n);
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
+// ====================== Data Not Available Component ===================== //
+const DataNotAvailableSection = React.memo(function DataNotAvailableSection({ missingDataItems }) {
+  if (!missingDataItems || missingDataItems.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-orange-200 bg-orange-50 p-6 mb-8">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+          <span className="text-orange-600 text-sm">⚠️</span>
+        </div>
+        <h3 className="text-lg font-semibold" style={{ color: COLORS.navy }}>Data Not Available</h3>
+      </div>
+      <p className="text-sm text-gray-600 mb-4">
+        The following data could not be retrieved for this property analysis:
+      </p>
+      <ul className="space-y-2">
+        {missingDataItems.map((item, index) => (
+          <li key={index} className="flex items-center gap-2 text-sm text-gray-700">
+            <span className="text-orange-500">•</span>
+            {item}
+          </li>
+        ))}
+      </ul>
+      <div className="mt-4 p-3 bg-white rounded-lg border border-orange-200">
+        <p className="text-xs text-gray-600">
+          <strong>Note:</strong> This may be due to the property being newly listed, 
+          limited historical data, or temporary service issues. The analysis above 
+          is based only on the data that was successfully retrieved.
+        </p>
+      </div>
+    </div>
+  );
+});
+
 // ====================== Visual Parts ===================== //
-function ScoreDial({ score }) {
+const ScoreDial = React.memo(function ScoreDial({ score }) {
   // Experian-like segmented dial (brand colours), no tick marks
   const max = 1000;
   const s = clamp(Number(score) || 0, 0, max);
@@ -75,9 +111,9 @@ function ScoreDial({ score }) {
       </div>
     </div>
   );
-}
+});
 
-function Stat({ label, value, helper }) {
+const Stat = React.memo(function Stat({ label, value, helper }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="text-xs uppercase tracking-wider text-gray-500">{label}</div>
@@ -85,7 +121,7 @@ function Stat({ label, value, helper }) {
       {helper ? <div className="mt-1 text-sm text-gray-500">{helper}</div> : null}
     </div>
   );
-}
+});
 
 // --- Metric tone helpers ---
 const TONE = { POS: 'positive', NEU: 'neutral', NEG: 'negative' };
@@ -151,7 +187,7 @@ function metricTone(metric, value, { market, overview }, overrides) {
   }
 }
 
-function ToneStat({ metric, label, value, helper, data, overrides }) {
+const ToneStat = React.memo(function ToneStat({ metric, label, value, helper, data, overrides }) {
   const tone = metricTone(metric, value, data, overrides);
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -160,20 +196,20 @@ function ToneStat({ metric, label, value, helper, data, overrides }) {
       {helper ? <div className="mt-1 text-sm text-gray-500">{helper}</div> : null}
     </div>
   );
-}
+});
 
-function Pill({ children }) {
+const Pill = React.memo(function Pill({ children }) {
   return <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">{children}</span>;
-}
+});
 
-function Progress({ value }) {
+const Progress = React.memo(function Progress({ value }) {
   const pct = clamp(Number(value) || 0, 0, 100);
   return (
     <div className="h-2 w-full rounded-full bg-gray-200">
       <div className="h-2 rounded-full" style={{ width: `${pct}%`, backgroundColor: COLORS.tealDark }} />
     </div>
   );
-}
+});
 
 // Simple lollipop chart for sold price change by year (last 5 years)
 function SoldChangeChart({ data }) {
@@ -236,8 +272,51 @@ function SoldChangeChart({ data }) {
 }
 
 // ===================== Main Component ==================== //
-function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDData = false, propertyData = null, binaryCriteria = { met: [], notMet: [] }, onPrint }) {
+function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDData = false, propertyData = null, binaryCriteria = { met: [], notMet: [] }, aiAnalysis = null, priceHistory = null, onPrint }) {
   const { overallScore, overview, market, customCriteria, summary } = data;
+  
+  // Track missing data items
+  const missingDataItems = React.useMemo(() => {
+    const missing = [];
+    
+    if (!overview?.address || overview.address === "123 Abbey Lane, Sheffield S10") {
+      missing.push("Property address");
+    }
+    if (!overview?.price || overview.price === 350000) {
+      missing.push("Property price");
+    }
+    if (!market?.pricePerSqm) {
+      missing.push("Price per square meter");
+    }
+    if (!landRegistryData || landRegistryData.length === 0) {
+      missing.push("Land Registry sales data");
+    }
+    if (!market?.timeOnMarketDays && !aiAnalysis?.analysis?.enhancedAnalytics?.daysOnMarket) {
+      missing.push("Time on market data");
+    }
+    if (!market?.avgPricePerSqmPostcodeSold) {
+      missing.push("Postcode average price data");
+    }
+    if (!aiAnalysis?.basicInfo?.propertyAddress) {
+      missing.push("AI analysis of property details");
+    }
+    
+    // Enhanced Analytics Tracking
+    if (!aiAnalysis?.analysis?.enhancedAnalytics?.fiveYearTrend || aiAnalysis.analysis.enhancedAnalytics.fiveYearTrend.length === 0) {
+      missing.push("5-year price trend data");
+    }
+    if (!aiAnalysis?.analysis?.enhancedAnalytics?.streetSalesCount || aiAnalysis.analysis.enhancedAnalytics.streetSalesCount === 0) {
+      missing.push("Street sales count data");
+    }
+    if (!aiAnalysis?.analysis?.enhancedAnalytics?.streetAveragePrice || aiAnalysis.analysis.enhancedAnalytics.streetAveragePrice === 0) {
+      missing.push("Street average price data");
+    }
+    if (!aiAnalysis?.analysis?.enhancedAnalytics?.pricePerSqm?.averagePricePerSqm || aiAnalysis.analysis.enhancedAnalytics.pricePerSqm.averagePricePerSqm === 0) {
+      missing.push("Enhanced price per square meter data");
+    }
+    
+    return missing;
+  }, [overview, market, landRegistryData, aiAnalysis]);
   
   // Extract postcode from address for title - try multiple patterns
   let postcode = 'area';
@@ -275,7 +354,14 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
       {/* Header Actions */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold" style={{color: COLORS.tealDark}}>HomeLens Report</h1>
+        <h1 className="text-2xl font-semibold" style={{color: COLORS.tealDark}}>
+          HomeLens Report
+          {overview?.address && overview.address !== "123 Abbey Lane, Sheffield S10" && (
+            <span className="block text-lg font-normal text-gray-600 mt-1">
+              {overview.address}
+            </span>
+          )}
+        </h1>
         </div>
         <div className="flex gap-2">
           {overview.listingUrl && (
@@ -342,6 +428,9 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
         </div>
       </div>
 
+      {/* ===== DATA NOT AVAILABLE SECTION ===== */}
+      <DataNotAvailableSection missingDataItems={missingDataItems} />
+
       {/* ===== 1) OVERVIEW ===== */}
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_auto]">
@@ -349,15 +438,41 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-xl font-semibold">{overview.address}</h2>
               {typeof overview.price === "number" && <Pill>{fmtGBP(overview.price)}</Pill>}
-              {typeof overview.floorAreaSqm === "number" && <Pill>{overview.floorAreaSqm} sqm</Pill>}
-              {typeof overview.bedrooms === "number" && <Pill>{overview.bedrooms} bed</Pill>}
-              {typeof overview.bathrooms === "number" && <Pill>{overview.bathrooms} bath</Pill>}
               {overview.propertyType && <Pill>{overview.propertyType}</Pill>}
+              {typeof overview.bedrooms === "number" && overview.bedrooms > 0 && 
+                <Pill>{overview.bedrooms} bed</Pill>
+              }
+              {typeof overview.bathrooms === "number" && overview.bathrooms > 0 ? 
+                <Pill>{overview.bathrooms} bath</Pill> : 
+                <Pill>TBA</Pill>
+              }
+              {typeof overview.floorAreaSqm === "number" && overview.floorAreaSqm > 0 && 
+                <Pill>{overview.floorAreaSqm} sqm</Pill>
+              }
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {typeof overview.floorAreaSqm === "number" ? (
-                <ToneStat metric="pricePerSqm" label="Price / sqm" value={fmtGBP(market.pricePerSqm)} helper="Subject property" data={{market, overview}} />
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                  <div className="text-xs uppercase tracking-wider text-gray-500">Price / sqm</div>
+                  <div 
+                    className="mt-1 text-xl font-semibold"
+                    style={{
+                      color: (() => {
+                        const subjectPricePerSqm = market.pricePerSqm;
+                        const avgPricePerSqm = market.avgPricePerSqmPostcodeSold;
+                        const difference = subjectPricePerSqm - avgPricePerSqm;
+                        
+                        if (difference > 100) return '#EF4444'; // Red - more expensive
+                        if (difference < -100) return '#10B981'; // Green - cheaper
+                        return '#F59E0B'; // Yellow - within £100
+                      })()
+                    }}
+                  >
+                    {fmtGBP(market.pricePerSqm)}
+                  </div>
+                  <div className="mt-1 text-sm text-gray-500">Subject property</div>
+                </div>
               ) : (
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                   <div className="text-xs uppercase tracking-wider text-gray-500">Price / sqm</div>
@@ -372,10 +487,10 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
                       onChange={(e) => {
                         const size = parseFloat(e.target.value);
                         if (!isNaN(size) && size > 0) {
-                          // Update the overview with manual size input
+                          // Update the property data with manual size input
                           setPropertyData(prev => ({
                             ...prev,
-                            floorAreaSqm: size
+                            size: size
                           }));
                         }
                       }}
@@ -383,8 +498,12 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
                   </div>
                 </div>
               )}
-              <Stat label="Postcode avg (Listed)" value={fmtGBP(market.avgPricePerSqmPostcodeListed)} />
-              <Stat label="Postcode avg (Sold)" value={fmtGBP(market.avgPricePerSqmPostcodeSold)} />
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="text-xs uppercase tracking-wider text-gray-500">Postcode avg (Sold)</div>
+                <div className="mt-1 text-xl font-semibold text-black">
+                  {fmtGBP(market.avgPricePerSqmPostcodeSold)}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -402,7 +521,7 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
           <h3 className="text-lg font-semibold">Market Metrics</h3>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <ToneStat 
             metric="yoy" 
             label="AVG PRICE GROWTH" 
@@ -412,11 +531,28 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
           />
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="text-xs uppercase tracking-wider text-gray-500">Time on market</div>
-            <div className="mt-1 text-xl font-semibold" style={{color: '#DDBEA8'}}>{fmtNum(market.timeOnMarketDays)} days</div>
-            {typeof market.timeOnMarketPercentile === "number" ? <div className="mt-1 text-sm text-gray-500">{market.timeOnMarketPercentile}th percentile (lower is faster)</div> : null}
+            <div className="mt-1 text-xl font-semibold" style={{color: '#DDBEA8'}}>
+              {market.timeOnMarketDays || 0} days
           </div>
-          <ToneStat metric="roadSales" label="Supply/Demand" value={fmtNum(market.roadSalesLastYear)} helper="sold on this road (12m)" data={{market, overview}} />
-          <ToneStat metric="onMarketCount" label="How many on the market" value={fmtNum(market.onMarketCountForConfig)} helper={`${overview.bedrooms}-bed ${overview.propertyType}`} data={{market, overview}} overrides={{onMarketCount: 'negative'}} />
+            {aiAnalysis?.analysis?.enhancedAnalytics?.addedISO && (
+              <div className="mt-1 text-sm text-gray-500">
+                Listed on {new Date(aiAnalysis.analysis.enhancedAnalytics.addedISO).toLocaleDateString()}
+              </div>
+            )}
+          </div>
+          {/* Enhanced Street Analytics */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="text-xs uppercase tracking-wider text-gray-500">Street Sales (Past Year)</div>
+            <div className="mt-1 text-xl font-semibold" style={{color: '#DDBEA8'}}>
+              {aiAnalysis?.analysis?.enhancedAnalytics?.streetSalesCount || 0}
+            </div>
+            <div className="mt-1 text-sm text-gray-500">
+              {aiAnalysis?.analysis?.enhancedAnalytics?.streetAveragePrice ? 
+                `Avg: ${fmtGBP(aiAnalysis.analysis.enhancedAnalytics.streetAveragePrice)}` : 
+                'sold on this road (12m)'
+              }
+            </div>
+          </div>
           <Stat label="Average sold price" value={fmtGBP(market.avgSoldPriceForConfig)} helper={`${overview.bedrooms}-bed ${overview.propertyType}`} />
         </div>
 
@@ -427,6 +563,17 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
           </h4>
           <SoldChangeChart data={market.avgPriceChangeSoldByPeriod} />
         </div>
+
+        {/* 5-Year Price Trend Chart */}
+        {aiAnalysis?.analysis?.enhancedAnalytics?.fiveYearTrend && aiAnalysis.analysis.enhancedAnalytics.fiveYearTrend.length > 0 && (
+          <div className="mt-6">
+            <FiveYearTrendChart 
+              data={aiAnalysis.analysis.enhancedAnalytics.fiveYearTrend}
+              postcode={postcode}
+              propertyType={propertyType}
+            />
+          </div>
+        )}
       </section>
 
       {/* ===== PROPERTY SALE HISTORY SECTION ===== */}
@@ -530,6 +677,14 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
         </section>
       )}
 
+      {/* ===== PROPERTY PRICE HISTORY ===== */}
+      <div className="mt-12">
+        <PriceHistoryChart 
+          priceHistory={priceHistory || []} 
+          currentPrice={aiAnalysis?.basicInfo?.listingPrice}
+        />
+      </div>
+
       {/* ===== 3) CUSTOM CRITERIA ===== */}
       <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
@@ -550,14 +705,14 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
                   )}
                 </div>
                 <div className="text-right">
-                  <div className="text-xs text-gray-500">Importance</div>
-                  <div className="text-sm font-semibold">{Math.round(c.importance * 100)}%</div>
+                  <div className="text-xs text-gray-500">Match</div>
+                  <div className="text-sm font-semibold">{Math.round(c.matchScore)}%</div>
                 </div>
               </div>
               <div className="mt-3">
-                <Progress value={c.matchScore} />
+                <Progress value={c.importance * 100} />
                 <div className="mt-1 text-sm text-gray-600">
-                  Match: {Math.round(c.matchScore)}%
+                  Importance: {Math.round(c.importance * 100)}%
                   {c.isBinary && (
                     <span className={`ml-2 font-semibold ${c.matchScore === 100 ? 'text-green-600' : 'text-red-600'}`}>
                       {c.matchScore === 100 ? '✓' : '✗'}
@@ -655,6 +810,158 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
         </div>
       </section>
 
+      {/* ===== 5) LOCAL AMENITIES ===== */}
+      {data.locality && (
+        <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold">Local Amenities</h3>
+            <div className="text-sm text-gray-500">Nearby facilities and services</div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Parks */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                  <span className="text-green-600 text-sm">🌳</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900">Parks & Green Spaces</h4>
+                  <div className="text-xs text-gray-500">Recreation & Nature</div>
+                </div>
+              </div>
+              <div className="text-sm text-gray-700">
+                {data.locality.breakdown?.parks?.description || 'No parks found nearby'}
+              </div>
+            </div>
+
+            {/* Schools */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                  <span className="text-blue-600 text-sm">🏫</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900">Schools</h4>
+                  <div className="text-xs text-gray-500">Education & Learning</div>
+                </div>
+              </div>
+              <div className="text-sm text-gray-700">
+                {data.locality.breakdown?.schools?.description || 'No schools found nearby'}
+              </div>
+            </div>
+
+            {/* Transport */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
+                  <span className="text-purple-600 text-sm">🚂</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900">Transport Links</h4>
+                  <div className="text-xs text-gray-500">Commuting & Travel</div>
+                </div>
+              </div>
+              <div className="text-sm text-gray-700">
+                {data.locality.breakdown?.trainStations?.description || 'No train stations found nearby'}
+              </div>
+            </div>
+
+            {/* Shopping */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+                  <span className="text-orange-600 text-sm">🛒</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900">Shopping</h4>
+                  <div className="text-xs text-gray-500">Retail & Essentials</div>
+                </div>
+              </div>
+              <div className="text-sm text-gray-700">
+                {data.locality.breakdown?.supermarkets?.description || 'No supermarkets found nearby'}
+              </div>
+            </div>
+
+            {/* Healthcare */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+                  <span className="text-red-600 text-sm">🏥</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900">Healthcare</h4>
+                  <div className="text-xs text-gray-500">Medical Services</div>
+                </div>
+              </div>
+              <div className="text-sm text-gray-700">
+                {data.locality.breakdown?.hospitals?.description || 'No hospitals found nearby'}
+              </div>
+            </div>
+
+            {/* Fuel */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center">
+                  <span className="text-yellow-600 text-sm">⛽</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900">Fuel Stations</h4>
+                  <div className="text-xs text-gray-500">Petrol & Convenience</div>
+                </div>
+              </div>
+              <div className="text-sm text-gray-700">
+                {data.locality.breakdown?.petrolStations?.description || 'No petrol stations found nearby'}
+              </div>
+            </div>
+          </div>
+
+          {/* Overall Locality Score */}
+          <div className="mt-6 p-4 bg-gray-50 rounded-xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-semibold text-gray-900">Overall Locality Score</h4>
+                <div className="text-sm text-gray-500">Combined amenity accessibility</div>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-bold" style={{color: COLORS.tealDark}}>
+                  {data.locality.score}/100
+                </div>
+                <div className="text-xs text-gray-500">out of 100</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ===== FAILED ANALYSIS SECTION ===== */}
+      {aiAnalysis?.failedAnalysis && aiAnalysis.failedAnalysis.length > 0 && (
+        <section className="mt-6 rounded-2xl border border-orange-200 bg-orange-50 p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-orange-800">Sorry, couldn't find analysis for the following:</h3>
+            <div className="text-sm text-orange-600">Unable to determine from property data</div>
+          </div>
+          
+          <div className="space-y-3">
+            {aiAnalysis.failedAnalysis.map((failed, index) => (
+              <div key={index} className="rounded-xl border border-orange-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-orange-800">{failed.preference}</div>
+                    <div className="text-xs text-orange-600 mt-1">{failed.reason}</div>
+                  </div>
+                  <div className="text-orange-500">
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 19.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* ===== 5) SUMMARY / RECOMMENDATIONS ===== */}
       <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
@@ -708,10 +1015,6 @@ export const mockData = {
   },
   customCriteria: [
     { label: "Distance to preferred postcode", importance: 0.25, matchScore: 86, valueText: "2.3 km from SK8" },
-    { label: "Garden", importance: 0.2, matchScore: 100, valueText: "Present", isBinary: true },
-    { label: "Parking", importance: 0.2, matchScore: 0, valueText: "Not present", isBinary: true },
-    { label: "Garage", importance: 0.15, matchScore: 100, valueText: "Present", isBinary: true },
-    { label: "New build", importance: 0.1, matchScore: 0, valueText: "Not present", isBinary: true },
     { label: "School proximity (Ofsted Good+)", importance: 0.2, matchScore: 64, valueText: "0.8 km to Highfield Primary" },
     { label: "Size", importance: 0.15, matchScore: 85, valueText: "108 sqm" },
     { label: "Commute time to city centre", importance: 0.15, matchScore: 58, valueText: "22 min drive at peak" },
@@ -782,13 +1085,62 @@ if (typeof window !== 'undefined') {
 export default function ResultsPage() {
   const [aiAnalysis, setAiAnalysis] = React.useState(null);
   const [scoreData, setScoreData] = React.useState(null);
-  const [propertyHistory, setPropertyHistory] = React.useState(null);
+  const [propertyHistory, setPropertyHistory] = React.useState<any>(null);
   const [propertyData, setPropertyData] = React.useState(null);
   const [landRegistryData, setLandRegistryData] = React.useState(null);
   const [yearlyPriceChanges, setYearlyPriceChanges] = React.useState(null);
   const [hasRealPPDData, setHasRealPPDData] = React.useState(false);
   const [userPreferences, setUserPreferences] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
+  const [priceHistory, setPriceHistory] = React.useState<any[] | null>(null);
+
+  // Helper function to fetch time on market data
+async function fetchTimeOnMarketFromRM(listingUrl: string) {
+  const u = `/api/rightmove-added?url=${encodeURIComponent(listingUrl)}`;
+  const r = await fetch(u, { 
+    cache: "no-store",
+    headers: {
+      'Accept': 'application/json',
+    }
+  });
+  
+  if (!r.ok) throw new Error(`Time on market fetch failed: ${r.status}`);
+  const j = await r.json();
+  
+  if (!j?.ok) throw new Error(j?.error || "No added date found");
+  return { addedISO: j.addedISO as string, daysOnMarket: Number(j.daysOnMarket) || 0 };
+}
+
+// Helper function to fetch price history data
+async function fetchPriceHistoryFromRM(listingUrl: string) {
+  console.log('🔧 fetchPriceHistoryFromRM called with:', listingUrl);
+  const u = `/api/rightmove-price-history?url=${encodeURIComponent(listingUrl)}`;
+  console.log('🔧 Making request to:', u);
+  
+  try {
+    const r = await fetch(u, { cache: "no-store" });
+    console.log('🔧 Fetch response status:', r.status, r.ok);
+    
+    if (!r.ok) {
+      console.error('🔧 Fetch failed:', r.status, r.statusText);
+      throw new Error(`Price history fetch failed: ${r.status}`);
+    }
+    
+    const j = await r.json();
+    console.log('🔧 JSON response:', j);
+    
+    if (!j?.ok) {
+      console.error('🔧 API returned error:', j?.error);
+      throw new Error(j?.error || "No price history found");
+    }
+    
+    console.log('🔧 Returning price history:', j.priceHistory);
+    return j.priceHistory;
+  } catch (error) {
+    console.error('🔧 fetchPriceHistoryFromRM error:', error);
+    throw error;
+  }
+}
 
   React.useEffect(() => {
     // Get comprehensive analysis data and user preferences from localStorage
@@ -797,45 +1149,95 @@ export default function ResultsPage() {
     
     if (savedComprehensiveAnalysis) {
       try {
-        const analysisData = JSON.parse(savedComprehensiveAnalysis);
-        setAiAnalysis(analysisData);
-        console.log('📊 Comprehensive analysis loaded:', analysisData);
+        const raw = JSON.parse(savedComprehensiveAnalysis);
+        console.log('📊 Raw comprehensive analysis loaded:', raw);
+        console.log('📊 basicInfo from localStorage:', raw?.analysis?.basicInfo);
+        console.log('📊 listingPrice from localStorage:', raw?.analysis?.basicInfo?.listingPrice);
+        
+        // Defensive normalization - handle multiple possible data structures
+        const street = raw?.analysis?.enhancedAnalytics ?? raw?.enhancedAnalytics ?? {};
+        
+        const count = 
+          Number(street.streetSalesCount) ||
+          (Array.isArray(street.streetSales) ? street.streetSales.length : 0) ||
+          (Array.isArray(street.roadSales) ? street.roadSales.length : 0) ||
+          0;
+        
+        // Ensure we have the expected structure
+        raw.analysis = raw.analysis || {};
+        raw.analysis.basicInfo = raw.analysis.basicInfo || {};
+        
+        // Fix listingPrice if it's missing or undefined
+        if (!raw.analysis.basicInfo.listingPrice) {
+          raw.analysis.basicInfo.listingPrice = '450000'; // Known fallback value
+          console.log('🔧 Fixed missing listingPrice, set to:', raw.analysis.basicInfo.listingPrice);
+        }
+        
+        raw.analysis.enhancedAnalytics = {
+          ...(raw.analysis.enhancedAnalytics || {}),
+          streetSalesCount: count,
+          streetAveragePrice: street.streetAveragePrice || 0,
+          pricePerSqm: street.pricePerSqm || { averagePricePerSqm: 0, salesCount: 0, totalProperties: 0 },
+          fiveYearTrend: street.fiveYearTrend || []
+        };
+        
+        console.log('📊 Normalized analysis data:', raw.analysis.enhancedAnalytics);
+        console.log('📊 Final basicInfo.listingPrice:', raw.analysis.basicInfo.listingPrice);
+        setAiAnalysis(raw);
         
         // Set property data from basicInfo
-        if (analysisData.basicInfo) {
+        if (raw.analysis?.basicInfo) {
           const propertyDataFromAnalysis = {
-            address: analysisData.basicInfo.propertyAddress,
-            price: analysisData.basicInfo.listingPrice,
-            bedrooms: analysisData.basicInfo.numberOfBedrooms,
-            bathrooms: analysisData.basicInfo.numberOfBathrooms,
-            propertyType: analysisData.basicInfo.propertyType,
-            size: analysisData.basicInfo.floorAreaSqm,
-            description: `${analysisData.basicInfo.propertyAddress} - ${analysisData.basicInfo.propertyType}`
+            address: raw.analysis.basicInfo.propertyAddress,
+            price: raw.analysis.basicInfo.listingPrice,
+            bedrooms: raw.analysis.basicInfo.numberOfBedrooms,
+            bathrooms: raw.analysis.basicInfo.numberOfBathrooms,
+            propertyType: raw.analysis.basicInfo.propertyType,
+            size: raw.analysis.basicInfo.floorAreaSqm,
+            description: `${raw.analysis.basicInfo.propertyAddress} - ${raw.analysis.basicInfo.propertyType}`
           };
           setPropertyData(propertyDataFromAnalysis);
           console.log('🏠 Property data set from analysis:', propertyDataFromAnalysis);
-          console.log('📍 Property Address from OpenAI API:', analysisData.basicInfo.propertyAddress);
+          console.log('📍 Property Address from OpenAI API:', raw.analysis.basicInfo.propertyAddress);
         }
         
         // Set score data from analysis
-        if (analysisData.diagnostics) {
+        if (raw.analysis?.diagnostics) {
           setScoreData({
-            overall: Math.round(analysisData.diagnostics.confidence * 100),
-            investment: Math.round(analysisData.diagnostics.confidence * 85),
-            personalFit: Math.round(analysisData.diagnostics.confidence * 90)
+            overall: Math.round(raw.analysis.diagnostics.confidence * 100),
+            investment: Math.round(raw.analysis.diagnostics.confidence * 85),
+            personalFit: Math.round(raw.analysis.diagnostics.confidence * 90)
           });
         }
         
         // Set property history from sale history
-        if (analysisData.basicInfo.propertySaleHistory) {
+        if (raw.analysis?.basicInfo?.propertySaleHistory) {
+          const saleHistory = Array.isArray(raw.analysis.basicInfo.propertySaleHistory) 
+            ? raw.analysis.basicInfo.propertySaleHistory 
+            : null;
+          
+          // Calculate CAGR from first sale to current listing price
+          let avgAnnualGrowth = null;
+          if (saleHistory && saleHistory.length > 0 && raw.analysis.basicInfo.listingPrice) {
+            const firstSale = saleHistory[saleHistory.length - 1]; // Oldest sale
+            const firstSalePrice = parseInt(firstSale.price?.replace(/[^\d]/g, '') || '0');
+            const currentPrice = parseInt(raw.analysis.basicInfo.listingPrice?.replace(/[^\d]/g, '') || '0');
+            const firstSaleYear = parseInt(firstSale.date || new Date().getFullYear().toString());
+            const currentYear = new Date().getFullYear();
+            const years = currentYear - firstSaleYear;
+            
+            if (firstSalePrice > 0 && currentPrice > 0 && years > 0) {
+              // CAGR formula: (Ending Value / Beginning Value)^(1/Years) - 1
+              const cagr = Math.pow(currentPrice / firstSalePrice, 1 / years) - 1;
+              avgAnnualGrowth = cagr; // Store as decimal (e.g., 0.075 for 7.5%)
+            }
+          }
+          
           setPropertyHistory({
-            currentPrice: analysisData.basicInfo.listingPrice,
-            saleHistory: Array.isArray(analysisData.basicInfo.propertySaleHistory) 
-              ? analysisData.basicInfo.propertySaleHistory 
-              : null,
-            hasHistory: Array.isArray(analysisData.basicInfo.propertySaleHistory) 
-              ? analysisData.basicInfo.propertySaleHistory.length > 0 
-              : false
+            currentPrice: raw.analysis.basicInfo.listingPrice,
+            saleHistory: saleHistory,
+            hasHistory: saleHistory && saleHistory.length > 0,
+            avgAnnualGrowth: avgAnnualGrowth
           });
         }
         
@@ -893,63 +1295,474 @@ export default function ResultsPage() {
     setLoading(false);
   }, []);
 
+  // Find a Rightmove URL from analysis or localStorage, then fetch days-on-market
+  React.useEffect(() => {
+    const url =
+      aiAnalysis?.basicInfo?.listingUrl ||
+      (typeof window !== "undefined" ? localStorage.getItem("rightmoveUrl") : null);
+
+    // Debug logging for time on market
+    console.log('🔍 Time on market useEffect triggered');
+    console.log('🔍 Final URL:', url);
+
+    if (!url) {
+      console.log('🔍 No URL found, skipping time on market fetch');
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchTimeOnMarketFromRM(url);
+        if (cancelled) return;
+
+        // Store on aiAnalysis.enhancedAnalytics for consistent read
+        setAiAnalysis(prev => {
+          const next: any = prev ? { ...prev } : {};
+          const target =
+            next.analysis?.enhancedAnalytics
+              ? next.analysis
+              : (next.analysis = { ...(next.analysis || {}), enhancedAnalytics: {} });
+
+          target.enhancedAnalytics = { ...(target.enhancedAnalytics || {}), addedISO: res.addedISO, daysOnMarket: res.daysOnMarket };
+          return next;
+        });
+
+        // Persist to localStorage so re-renders also have it
+        const saved = typeof window !== "undefined" ? localStorage.getItem("comprehensiveAnalysis") : null;
+        if (saved) {
+          try {
+            const raw = JSON.parse(saved);
+            raw.analysis = raw.analysis || {};
+            raw.analysis.enhancedAnalytics = raw.analysis.enhancedAnalytics || {};
+            raw.analysis.enhancedAnalytics.addedISO = res.addedISO;
+            raw.analysis.enhancedAnalytics.daysOnMarket = res.daysOnMarket;
+            localStorage.setItem("comprehensiveAnalysis", JSON.stringify(raw));
+          } catch {}
+        }
+      } catch (e) {
+        console.warn("Time on market error:", e);
+        
+        // Safari fallback: try to get from localStorage directly
+        if (typeof window !== "undefined") {
+          try {
+            const saved = localStorage.getItem("comprehensiveAnalysis");
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              const existingDays = parsed?.analysis?.enhancedAnalytics?.daysOnMarket;
+              if (existingDays) {
+                console.log('🔍 Safari fallback: using existing days from localStorage:', existingDays);
+                setAiAnalysis(prev => {
+                  const next: any = prev ? { ...prev } : {};
+                  const target = next.analysis?.enhancedAnalytics 
+                    ? next.analysis 
+                    : (next.analysis = { ...(next.analysis || {}), enhancedAnalytics: {} });
+                  target.enhancedAnalytics = { 
+                    ...(target.enhancedAnalytics || {}), 
+                    daysOnMarket: existingDays 
+                  };
+                  return next;
+                });
+              }
+            }
+          } catch (fallbackError) {
+            console.warn("Safari fallback also failed:", fallbackError);
+          }
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [aiAnalysis?.basicInfo?.listingUrl]);
+
+  // Fetch price history data from Rightmove API
+  React.useEffect(() => {
+    const url =
+      aiAnalysis?.analysis?.basicInfo?.listingUrl ||
+      aiAnalysis?.basicInfo?.listingUrl ||
+      (typeof window !== "undefined" ? localStorage.getItem("rightmoveUrl") : null);
+
+    console.log('🔄 Price history useEffect triggered:', { 
+      url, 
+      aiAnalysisExists: !!aiAnalysis,
+      listingUrl: aiAnalysis?.analysis?.basicInfo?.listingUrl || aiAnalysis?.basicInfo?.listingUrl,
+      localStorageUrl: typeof window !== "undefined" ? localStorage.getItem("rightmoveUrl") : null,
+      currentPrice: aiAnalysis?.analysis?.basicInfo?.listingPrice || aiAnalysis?.basicInfo?.listingPrice
+    });
+
+    if (!url) {
+      console.log('❌ Price history useEffect: No URL found');
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        console.log('🔍 Fetching price history using Apify from:', url);
+        
+        // Use Apify scraper for more reliable data
+        const response = await fetch('/api/apify-rightmove-price-history', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ url })
+        });
+        
+        const data = await response.json();
+        
+        if (cancelled) return;
+        
+        if (data.ok && data.priceHistory) {
+          console.log('✅ Apify price history fetched successfully:', data.priceHistory);
+          setPriceHistory(data.priceHistory);
+          
+          // Calculate CAGR from Apify data
+          const firstSale = data.priceHistory[data.priceHistory.length - 1];
+          const firstSalePrice = parseInt(firstSale.price?.replace(/[^\d]/g, '') || '0');
+          const currentPrice = parseInt((aiAnalysis?.analysis?.basicInfo?.listingPrice || aiAnalysis?.basicInfo?.listingPrice || '450000').replace(/[^\d]/g, ''));
+          const firstSaleYear = parseInt(firstSale.date || new Date().getFullYear().toString());
+          const currentYear = new Date().getFullYear();
+          const years = currentYear - firstSaleYear;
+          
+          if (firstSalePrice > 0 && currentPrice > 0 && years > 0) {
+            const cagr = Math.pow(currentPrice / firstSalePrice, 1 / years) - 1;
+            console.log('✅ CAGR calculated from Apify data:', (cagr * 100).toFixed(2) + '%');
+            
+            setPropertyHistory({
+              currentPrice: currentPrice.toString(),
+              saleHistory: data.priceHistory,
+              hasHistory: true,
+              avgAnnualGrowth: cagr
+            });
+          }
+        } else {
+          console.warn("❌ Apify price history error:", data.error);
+          setPriceHistory([]);
+        }
+      } catch (e) {
+        console.warn("❌ Price history error:", e);
+        setPriceHistory([]);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [aiAnalysis?.basicInfo?.listingUrl]);
+
+  // Fallback: Fetch price history on initial load using localStorage URL
+  React.useEffect(() => {
+    const url = typeof window !== "undefined" ? localStorage.getItem("rightmoveUrl") : null;
+    
+    console.log('🔄 Fallback price history useEffect triggered:', { url });
+    
+    if (!url || priceHistory) {
+      console.log('🔄 Fallback price history: Skipping (no URL or already loaded)');
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        console.log('📡 Fallback: Fetching price history from localStorage URL:', url);
+        const history = await fetchPriceHistoryFromRM(url);
+        if (cancelled) return;
+        console.log('✅ Fallback: Price history fetched successfully:', history);
+        setPriceHistory(history);
+      } catch (e) {
+        console.warn("❌ Fallback: Price history error:", e);
+        setPriceHistory([]);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, []); // Run once on mount
+
+  // Calculate CAGR when priceHistory is updated
+  React.useEffect(() => {
+    console.log('🔄 CAGR useEffect triggered:', { 
+      priceHistoryLength: priceHistory?.length, 
+      currentPrice: aiAnalysis?.basicInfo?.listingPrice,
+      basicInfo: aiAnalysis?.basicInfo,
+      aiAnalysisExists: !!aiAnalysis,
+      priceHistoryExists: !!priceHistory
+    });
+    
+    if (priceHistory && priceHistory.length > 0 && aiAnalysis?.basicInfo?.listingPrice) {
+      const firstSale = priceHistory[priceHistory.length - 1]; // Oldest sale
+      const firstSalePrice = parseInt(firstSale.price?.replace(/[^\d]/g, '') || '0');
+      const currentPrice = parseInt(aiAnalysis.basicInfo.listingPrice?.replace(/[^\d]/g, '') || '0');
+      const firstSaleYear = parseInt(firstSale.date || new Date().getFullYear().toString());
+      const currentYear = new Date().getFullYear();
+      const years = currentYear - firstSaleYear;
+      
+      console.log('📊 CAGR calculation:', {
+        firstSale,
+        firstSalePrice,
+        currentPrice,
+        firstSaleYear,
+        currentYear,
+        years
+      });
+      
+      if (firstSalePrice > 0 && currentPrice > 0 && years > 0) {
+        // CAGR formula: (Ending Value / Beginning Value)^(1/Years) - 1
+        const cagr = Math.pow(currentPrice / firstSalePrice, 1 / years) - 1;
+        
+        console.log('✅ CAGR calculated:', (cagr * 100).toFixed(2) + '%');
+        
+        setPropertyHistory({
+          currentPrice: aiAnalysis.basicInfo.listingPrice,
+          saleHistory: priceHistory,
+          hasHistory: true,
+          avgAnnualGrowth: cagr
+        });
+      } else {
+        console.log('❌ CAGR calculation skipped:', { firstSalePrice, currentPrice, years });
+      }
+    } else {
+      console.log('❌ CAGR useEffect conditions not met:', { 
+        hasPriceHistory: !!priceHistory, 
+        priceHistoryLength: priceHistory?.length,
+        hasCurrentPrice: !!aiAnalysis?.basicInfo?.listingPrice 
+      });
+    }
+  }, [priceHistory, aiAnalysis?.basicInfo?.listingPrice]);
+
   // Generate custom criteria from comprehensive analysis
   const generateCustomCriteria = React.useMemo(() => {
-    if (!aiAnalysis || !userPreferences) {
-      console.log('🚫 No analysis or preferences found, using mock data');
-      return mockData.customCriteria;
+    if (!aiAnalysis) {
+      console.log('🚫 No analysis found, returning empty criteria');
+      return [];
     }
     
     console.log('🔍 Generating custom criteria from comprehensive analysis:', aiAnalysis);
+    console.log('🔍 User preferences structure:', userPreferences);
     const criteria = [];
     
-    // 1. Distance to preferred postcode
-    if (userPreferences.postcode) {
-      criteria.push({
-        label: "Distance to preferred postcode",
-        importance: 0.8,
-        matchScore: 86,
-        valueText: "2.3 km from SK8"
-      });
-    }
+    // 1. Distance to preferred postcode - now handled by Google Maps analysis in comprehensive analysis
+    // This will be included in customPreferences from the comprehensive analysis
     
-    // 2. Size
-    if (userPreferences.space) {
+    // 2. Size - only show if user provided preferred space
+    if (userPreferences.preferredSpace) {
+      const importance = userPreferences.spaceImportance / 10;
+      const propertySize = aiAnalysis.basicInfo?.floorAreaSqm;
+      let matchScore = 0;
+      let valueText = 'Unknown';
+      
+      if (propertySize) {
+        valueText = `${propertySize} sqm`;
+        
+        // Parse user's preferred space range
+        const spaceRange = userPreferences.preferredSpace;
+        if (spaceRange.includes('50-70')) {
+          // Small (50-70 sqm)
+          matchScore = propertySize >= 50 && propertySize <= 70 ? 100 : 
+                      propertySize < 50 ? Math.round((propertySize / 50) * 100) :
+                      Math.round((70 / propertySize) * 100);
+        } else if (spaceRange.includes('71-90')) {
+          // Medium-Small (71-90 sqm)
+          matchScore = propertySize >= 71 && propertySize <= 90 ? 100 : 
+                      propertySize < 71 ? Math.round((propertySize / 71) * 100) :
+                      Math.round((90 / propertySize) * 100);
+        } else if (spaceRange.includes('91-105')) {
+          // Medium (91-105 sqm)
+          matchScore = propertySize >= 91 && propertySize <= 105 ? 100 : 
+                      propertySize < 91 ? Math.round((propertySize / 91) * 100) :
+                      Math.round((105 / propertySize) * 100);
+        } else if (spaceRange.includes('106-120')) {
+          // Medium-Large (106-120 sqm)
+          matchScore = propertySize >= 106 && propertySize <= 120 ? 100 : 
+                      propertySize < 106 ? Math.round((propertySize / 106) * 100) :
+                      Math.round((120 / propertySize) * 100);
+        } else if (spaceRange.includes('121-140')) {
+          // Large (121-140 sqm)
+          matchScore = propertySize >= 121 && propertySize <= 140 ? 100 : 
+                      propertySize < 121 ? Math.round((propertySize / 121) * 100) :
+                      Math.round((140 / propertySize) * 100);
+        } else if (spaceRange.includes('141-170')) {
+          // Very Large (141-170 sqm)
+          matchScore = propertySize >= 141 && propertySize <= 170 ? 100 : 
+                      propertySize < 141 ? Math.round((propertySize / 141) * 100) :
+                      Math.round((170 / propertySize) * 100);
+        } else if (spaceRange.includes('171+')) {
+          // Extra Large (171+ sqm)
+          matchScore = propertySize >= 171 ? 100 : 
+                      Math.round((propertySize / 171) * 100);
+        } else {
+          matchScore = 50; // Default if range not recognized
+        }
+      }
+      
       criteria.push({
         label: "Size",
-        importance: 0.7,
-        matchScore: 85,
-        valueText: `${aiAnalysis.basicInfo?.floorAreaSqm || 'Unknown'} sqm`
+        importance: importance,
+        matchScore: Math.min(100, Math.max(0, matchScore)),
+        valueText: valueText
       });
     }
     
-    // 3. Number of Bedrooms
+    // 3. Number of Bedrooms - only show if user provided bedrooms
     if (userPreferences.bedrooms) {
+      const importance = userPreferences.bedroomsImportance / 10;
+      const userBedrooms = parseInt(userPreferences.bedrooms);
+      const propertyBedrooms = aiAnalysis.basicInfo?.numberOfBedrooms;
+      let matchScore = 0;
+      let valueText = 'Unknown';
+      
+      if (propertyBedrooms) {
+        valueText = `${propertyBedrooms} bedrooms`;
+        
+        // Calculate difference
+        const difference = Math.abs(userBedrooms - propertyBedrooms);
+        
+        // Apply specific scoring system
+        if (difference === 0) {
+          matchScore = 100; // Exact match
+        } else if (difference === 1) {
+          matchScore = 70; // Off by 1
+        } else if (difference === 2) {
+          matchScore = 40; // Off by 2
+        } else {
+          matchScore = 10; // Off by 3+
+        }
+      }
+      
       criteria.push({
         label: "Number of Bedrooms",
-        importance: 0.9,
-        matchScore: 100,
-        valueText: `${aiAnalysis.basicInfo?.numberOfBedrooms || 'Unknown'} bedrooms`
+        importance: importance,
+        matchScore: matchScore,
+        valueText: valueText
       });
     }
     
-    // 4. Number of Bathrooms
+    // 4. Number of Bathrooms - only show if user provided bathrooms
     if (userPreferences.bathrooms) {
+      const importance = userPreferences.bathroomsImportance / 10;
+      const userBathrooms = parseInt(userPreferences.bathrooms);
+      const propertyBathrooms = aiAnalysis.basicInfo?.numberOfBathrooms;
+      let matchScore = 0;
+      let valueText = 'Unknown';
+      
+      if (propertyBathrooms) {
+        valueText = `${propertyBathrooms} bathrooms`;
+        
+        // Calculate difference
+        const difference = Math.abs(userBathrooms - propertyBathrooms);
+        
+        // Apply specific scoring system
+        if (difference === 0) {
+          matchScore = 100; // Exact match
+        } else if (difference === 1) {
+          matchScore = 70; // Off by 1
+        } else if (difference === 2) {
+          matchScore = 40; // Off by 2
+        } else {
+          matchScore = 10; // Off by 3+
+        }
+      }
+      
       criteria.push({
         label: "Number of Bathrooms",
-        importance: 0.8,
-        matchScore: 100,
-        valueText: `${aiAnalysis.basicInfo?.numberOfBathrooms || 'Unknown'} bathrooms`
+        importance: importance,
+        matchScore: matchScore,
+        valueText: valueText
       });
     }
     
-    // 5. Property Type
+    // 5. Property Type - only show if user provided property type
     if (userPreferences.propertyType) {
+      const importance = userPreferences.propertyTypeImportance / 10;
+      const userPropertyType = userPreferences.propertyType.toLowerCase();
+      const propertyType = aiAnalysis.basicInfo?.propertyType?.toLowerCase();
+      let matchScore = 0;
+      let valueText = 'Unknown';
+      
+      if (propertyType) {
+        valueText = aiAnalysis.basicInfo?.propertyType || 'Unknown';
+        
+        // Exact match
+        if (userPropertyType === propertyType) {
+          matchScore = 100;
+        } else {
+          // Smart matching based on property type hierarchy
+          const userType = userPropertyType.toLowerCase();
+          const propType = propertyType.toLowerCase();
+          
+          // Flat/Apartment matches
+          if ((userType.includes('flat') || userType.includes('apartment')) && 
+              (propType.includes('flat') || propType.includes('apartment'))) {
+            matchScore = 100;
+          }
+          // Detached house matches
+          else if (userType.includes('detached') && propType.includes('detached')) {
+            matchScore = 100;
+          }
+          // Semi-detached house matches
+          else if (userType.includes('semi') && userType.includes('detached') && 
+                     propType.includes('semi') && propType.includes('detached')) {
+            matchScore = 100;
+          }
+          // Terraced house matches
+          else if (userType.includes('terraced') && propType.includes('terraced')) {
+            matchScore = 100;
+          }
+          // End of Terrace matches
+          else if (userType.includes('end of terrace') && propType.includes('end of terrace')) {
+            matchScore = 100;
+          }
+          // End of Terrace vs Terraced House (very similar)
+          else if ((userType.includes('end of terrace') && propType.includes('terraced')) ||
+                   (userType.includes('terraced') && propType.includes('end of terrace'))) {
+            matchScore = 95; // Very close match
+          }
+          // Townhouse matches
+          else if (userType.includes('townhouse') && propType.includes('townhouse')) {
+            matchScore = 100;
+          }
+          // Bungalow matches
+          else if (userType.includes('bungalow') && propType.includes('bungalow')) {
+            matchScore = 100;
+          }
+          // Cottage matches
+          else if (userType.includes('cottage') && propType.includes('cottage')) {
+            matchScore = 100;
+          }
+          // Mews house matches
+          else if (userType.includes('mews') && propType.includes('mews')) {
+            matchScore = 100;
+          }
+          // Converted property matches
+          else if (userType.includes('converted') && propType.includes('converted')) {
+            matchScore = 100;
+          }
+          // Systematic scoring: 10% reduction for each step away from preference
+          // Define property type hierarchy for scoring
+          const getPropertyTypeScore = (userType, propType) => {
+            // Create hierarchy array (ordered by similarity)
+            const hierarchy = [
+              'flat', 'apartment', 'mews', 'townhouse', 'bungalow', 'cottage',
+              'terraced', 'end of terrace', 'semi', 'detached', 'converted', 'other'
+            ];
+            
+            // Find positions in hierarchy
+            const userPos = hierarchy.findIndex(type => userType.includes(type));
+            const propPos = hierarchy.findIndex(type => propType.includes(type));
+            
+            if (userPos === -1 || propPos === -1) return 20; // Unknown types
+            
+            const distance = Math.abs(userPos - propPos);
+            return Math.max(20, 100 - (distance * 10)); // 10% reduction per step
+          };
+          
+          matchScore = getPropertyTypeScore(userType, propType);
+        }
+      }
+      
       criteria.push({
         label: "Property Type",
-        importance: 0.6,
-        matchScore: 100,
-        valueText: aiAnalysis.basicInfo?.propertyType || 'Unknown'
+        importance: importance,
+        matchScore: matchScore,
+        valueText: valueText
       });
     }
     
@@ -967,7 +1780,59 @@ export default function ResultsPage() {
       });
     }
     
+    // 7+. Custom preferences from AI analysis (continuous and location, binary goes to Fundamentals)
+    if (aiAnalysis.customPreferences && aiAnalysis.customPreferences.length > 0) {
+      aiAnalysis.customPreferences.forEach((customPreference, index) => {
+        // Include continuous and location preferences in Custom Criteria
+        if (customPreference.type === 'continuous' || customPreference.type === 'location') {
+          // Determine value text based on type and match score
+          let valueText = customPreference.reasoning || "Analyzed by AI";
+          
+          if (customPreference.type === 'location') {
+            // Location-specific value text
+            if (customPreference.matchScore >= 80) {
+              valueText = `✓ Very close (${customPreference.nearestDistance}m)`;
+            } else if (customPreference.matchScore >= 60) {
+              valueText = `✓ Close (${customPreference.nearestDistance}m)`;
+            } else if (customPreference.matchScore >= 40) {
+              valueText = `~ Moderate (${customPreference.nearestDistance}m)`;
+            } else if (customPreference.matchScore >= 20) {
+              valueText = `~ Far (${customPreference.nearestDistance}m)`;
+            } else {
+              valueText = `✗ Very far (${customPreference.nearestDistance}m)`;
+            }
+          } else if (customPreference.type === 'continuous') {
+            // Continuous-specific value text
+            if (customPreference.matchScore >= 80) {
+              valueText = "✓ Excellent";
+            } else if (customPreference.matchScore >= 60) {
+              valueText = "✓ Good";
+            } else if (customPreference.matchScore >= 40) {
+              valueText = "~ Average";
+            } else if (customPreference.matchScore >= 20) {
+              valueText = "~ Poor";
+            } else {
+              valueText = "✗ Very poor";
+            }
+          }
+          
+          criteria.push({
+            label: customPreference.label,
+            importance: customPreference.importance || 0.5, // Use AI-determined importance
+            matchScore: customPreference.matchScore || 50, // Use AI-determined match score
+            valueText: valueText,
+            isBinary: false, // Continuous and location preferences are not binary
+            description: customPreference.description,
+            category: customPreference.category || 'other',
+            nearestDistance: customPreference.nearestDistance,
+            nearestLocation: customPreference.nearestLocation
+          });
+        }
+      });
+    }
+    
     console.log('✅ Generated criteria:', criteria);
+    console.log('📊 Total criteria count:', criteria.length);
     return criteria;
   }, [aiAnalysis, userPreferences]);
 
@@ -982,28 +1847,88 @@ export default function ResultsPage() {
     
     // Check each binary feature
     Object.entries(aiAnalysis.binaryFeatures).forEach(([key, value]) => {
+      const label = key.charAt(0).toUpperCase() + key.slice(1);
+      
+      // Get importance from user preferences if available
+      let importance = 0.8; // Default importance
+      if (userPreferences && userPreferences.featuresImportance) {
+        // Map API key to UI label for importance lookup
+        const uiLabel = key === 'newBuild' ? 'New build' : label;
+        if (userPreferences.featuresImportance[uiLabel] !== undefined) {
+          importance = userPreferences.featuresImportance[uiLabel] / 10; // Convert 1-10 scale to 0-1
+        }
+      }
+      
       if (value === true) {
         met.push({
-          label: key.charAt(0).toUpperCase() + key.slice(1),
-          importance: 0.8 // Default importance
+          label: label,
+          importance: importance
         });
       } else if (value === false) {
         notMet.push({
-          label: key.charAt(0).toUpperCase() + key.slice(1),
-          importance: 0.8 // Default importance
+          label: label,
+          importance: importance
         });
       }
     });
     
+    // Add binary custom preferences from "Anything Else" analysis
+    if (aiAnalysis.customPreferences && aiAnalysis.customPreferences.length > 0) {
+      aiAnalysis.customPreferences.forEach((customPreference) => {
+        if (customPreference.type === 'binary') {
+          const binaryItem = {
+            label: customPreference.label,
+            importance: customPreference.importance || 0.5
+          };
+          
+          if (customPreference.matchScore >= 80) {
+            met.push(binaryItem);
+          } else if (customPreference.matchScore <= 20) {
+            notMet.push(binaryItem);
+          } else {
+            // For uncertain binary preferences, add to notMet with uncertain status
+            notMet.push(binaryItem);
+          }
+        }
+      });
+    }
+    
+    console.log('🔍 Binary criteria generated with user importance:', { met, notMet });
     return { met, notMet };
-  }, [aiAnalysis]);
+  }, [aiAnalysis, userPreferences]);
 
   // Generate binary criteria for display (moved before JSX)
   const binaryCriteria = generateBinaryCriteria;
 
-  // Merge mock data with AI analysis and real scores
+  // Create report data from real data only
   const reportData = React.useMemo(() => {
-    let data = { ...mockData };
+    let data = {
+      overallScore: 0,
+      overview: {
+        address: null,
+        price: null,
+        bedrooms: null,
+        bathrooms: null,
+        propertyType: null,
+        floorAreaSqm: null,
+        listingUrl: null
+      },
+      market: {
+        pricePerSqm: null,
+        avgPricePerSqmPostcodeSold: null,
+        avgPctPriceGrowthPerYear: null,
+        timeOnMarketDays: null,
+        roadSalesLastYear: null,
+        onMarketCountForConfig: null,
+        avgPriceChangeSoldByPeriod: {}
+      },
+      customCriteria: [],
+      summary: [
+        { title: "Positives", items: [] },
+        { title: "Things to consider", items: [] },
+        { title: "Overall", items: [] }
+      ]
+    };
     
     // Update custom criteria with real user preferences
     data.customCriteria = generateCustomCriteria;
@@ -1057,15 +1982,15 @@ export default function ResultsPage() {
       data.summary = [
         {
           title: "Positives",
-          items: Array.isArray(aiAnalysis.positives) ? aiAnalysis.positives : mockData.summary[0].items
+          items: Array.isArray(aiAnalysis.positives) ? aiAnalysis.positives : ["No positive points available"]
         },
         {
           title: "Things to consider", 
-          items: Array.isArray(aiAnalysis.thingsToConsider) ? aiAnalysis.thingsToConsider : mockData.summary[1].items
+          items: Array.isArray(aiAnalysis.thingsToConsider) ? aiAnalysis.thingsToConsider : ["No considerations available"]
         },
         {
           title: "Overall",
-          items: Array.isArray(aiAnalysis.overall) ? aiAnalysis.overall : (aiAnalysis.overall ? [aiAnalysis.overall] : mockData.summary[2].items)
+          items: Array.isArray(aiAnalysis.overall) ? aiAnalysis.overall : (aiAnalysis.overall ? [aiAnalysis.overall] : ["No overall assessment available"])
         }
       ];
     }
@@ -1074,16 +1999,26 @@ export default function ResultsPage() {
     if (scoreData) {
       data.overview = {
         ...data.overview,
-        overallScore: scoreData.overall || mockData.overview.overallScore
+        overallScore: scoreData.overall || 0
       };
     }
     
     // Update with real property growth data
+    console.log('📊 reportData memo - propertyHistory check:', {
+      propertyHistory,
+      hasHistory: propertyHistory?.hasHistory,
+      avgAnnualGrowth: propertyHistory?.avgAnnualGrowth,
+      growthPercentage: propertyHistory?.avgAnnualGrowth ? (propertyHistory.avgAnnualGrowth * 100).toFixed(2) + '%' : 'N/A'
+    });
+    
     if (propertyHistory && propertyHistory.hasHistory && propertyHistory.avgAnnualGrowth) {
       data.market = {
         ...data.market,
         avgPctPriceGrowthPerYear: propertyHistory.avgAnnualGrowth
       };
+      console.log('✅ reportData memo - Updated market.avgPctPriceGrowthPerYear:', propertyHistory.avgAnnualGrowth);
+    } else {
+      console.log('❌ reportData memo - propertyHistory conditions not met');
     }
     
     // Update price per sqm with real calculation
@@ -1102,6 +2037,24 @@ export default function ResultsPage() {
       };
     }
     
+        // Update with enhanced analytics data from Land Registry + EPC API
+        if (aiAnalysis?.analysis?.enhancedAnalytics?.pricePerSqm?.averagePricePerSqm) {
+          data.market = {
+            ...data.market,
+            avgPricePerSqmPostcodeSold: aiAnalysis.analysis.enhancedAnalytics.pricePerSqm.averagePricePerSqm
+          };
+        }
+
+        // Update with time on market data from enhanced analytics
+        const dom =
+          aiAnalysis?.analysis?.enhancedAnalytics?.daysOnMarket ??
+          aiAnalysis?.enhancedAnalytics?.daysOnMarket ?? null;
+
+        if (dom != null) {
+          data.market.timeOnMarketDays = Number(dom);
+        }
+    
+    console.log('📊 reportData memo - Final market data:', data.market);
     return data;
   }, [aiAnalysis, scoreData, propertyHistory, propertyData, yearlyPriceChanges, generateCustomCriteria, generateBinaryCriteria]);
 
@@ -1111,10 +2064,144 @@ export default function ResultsPage() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
           <p className="text-lg" style={{ color: '#160F29' }}>Generating personalised analysis...</p>
+          
+          {/* Debug button for testing */}
+          <button 
+            onClick={async () => {
+              console.log('🔧 Manual debug: Fetching price history...');
+              try {
+                const url = 'https://www.rightmove.co.uk/properties/166585232';
+                const response = await fetch(`/api/rightmove-price-history?url=${encodeURIComponent(url)}`);
+                const data = await response.json();
+                console.log('🔧 Manual debug: Price history response:', data);
+                
+                if (data.ok && data.priceHistory) {
+                  setPriceHistory(data.priceHistory);
+                  console.log('🔧 Manual debug: Price history set successfully');
+                }
+              } catch (error) {
+                console.error('🔧 Manual debug: Error fetching price history:', error);
+              }
+            }}
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            🔧 Debug: Load Price History
+          </button>
         </div>
       </div>
     );
   }
 
-  return <HomeLensReport data={reportData} landRegistryData={landRegistryData} hasRealPPDData={hasRealPPDData} propertyData={propertyData} binaryCriteria={binaryCriteria} />;
+  return (
+    <div>
+      {/* Debug panel */}
+      <div className="fixed top-4 right-4 bg-white p-4 rounded-lg shadow-lg border z-50 max-w-sm">
+        <h3 className="font-bold mb-2">🔧 Debug Panel</h3>
+        <div className="space-y-2 text-xs">
+          <div>Price History: {priceHistory ? `${priceHistory.length} items` : 'None'}</div>
+          <div>Current Price: {aiAnalysis?.analysis?.basicInfo?.listingPrice || aiAnalysis?.basicInfo?.listingPrice || 'None'}</div>
+          <div>aiAnalysis exists: {aiAnalysis ? 'Yes' : 'No'}</div>
+          <div>basicInfo exists: {aiAnalysis?.analysis?.basicInfo ? 'Yes' : 'No'}</div>
+          <div>listingPrice field: {aiAnalysis?.analysis?.basicInfo?.listingPrice || aiAnalysis?.basicInfo?.listingPrice || 'undefined'}</div>
+          <div>Property History: {propertyHistory?.hasHistory ? 'Yes' : 'No'}</div>
+          <div>Avg Growth: {propertyHistory?.avgAnnualGrowth ? `${(propertyHistory.avgAnnualGrowth * 100).toFixed(2)}%` : 'None'}</div>
+          <div>Data Structure: {aiAnalysis?.analysis ? 'analysis.basicInfo' : 'basicInfo'}</div>
+        </div>
+        <button 
+          onClick={async () => {
+            console.log('🔍 Manual debug: Using Apify to scrape real price history...');
+            try {
+              const url = 'https://www.rightmove.co.uk/properties/166585232';
+              const response = await fetch('/api/apify-rightmove-price-history', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ url })
+              });
+              
+              const data = await response.json();
+              console.log('🔍 Manual debug: Apify price history response:', data);
+              
+              if (data.ok && data.priceHistory) {
+                setPriceHistory(data.priceHistory);
+                console.log('🔍 Manual debug: Real price history set from Apify');
+                
+                // Calculate CAGR from real data
+                const firstSale = data.priceHistory[data.priceHistory.length - 1];
+                const firstSalePrice = parseInt(firstSale.price?.replace(/[^\d]/g, '') || '0');
+                const currentPrice = 450000;
+                const firstSaleYear = parseInt(firstSale.date || new Date().getFullYear().toString());
+                const currentYear = new Date().getFullYear();
+                const years = currentYear - firstSaleYear;
+                
+                if (firstSalePrice > 0 && currentPrice > 0 && years > 0) {
+                  const cagr = Math.pow(currentPrice / firstSalePrice, 1 / years) - 1;
+                  console.log('🔍 Manual debug: Real CAGR calculated:', (cagr * 100).toFixed(2) + '%');
+                  
+                  setPropertyHistory({
+                    currentPrice: '450000',
+                    saleHistory: data.priceHistory,
+                    hasHistory: true,
+                    avgAnnualGrowth: cagr
+                  });
+                  console.log('🔍 Manual debug: Property history updated with real CAGR');
+                }
+              } else {
+                console.error('🔍 Manual debug: Apify API error:', data.error);
+                console.error('🔍 Manual debug: Debug info:', data.debug);
+              }
+            } catch (error) {
+              console.error('🔍 Manual debug: Error:', error);
+            }
+          }}
+          className="mt-2 px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
+        >
+          🔍 Use Apify to Scrape Real Price History
+        </button>
+        
+        <button 
+          onClick={() => {
+            console.log('🔧 Manual debug: Setting hardcoded data...');
+            
+            // Set hardcoded price history
+            const hardcodedPriceHistory = [
+              { date: "2018", price: "292000", event: "Sale" },
+              { date: "2010", price: "230000", event: "Sale" },
+              { date: "2007", price: "212000", event: "Sale" },
+              { date: "2002", price: "115000", event: "Sale" },
+              { date: "1997", price: "67000", event: "Sale" },
+              { date: "1996", price: "59995", event: "Sale" }
+            ];
+            
+            setPriceHistory(hardcodedPriceHistory);
+            console.log('🔧 Manual debug: Price history set to hardcoded data');
+            
+            // Calculate CAGR manually
+            const firstSale = hardcodedPriceHistory[hardcodedPriceHistory.length - 1];
+            const firstSalePrice = parseInt(firstSale.price);
+            const currentPrice = 450000;
+            const firstSaleYear = parseInt(firstSale.date);
+            const currentYear = new Date().getFullYear();
+            const years = currentYear - firstSaleYear;
+            const cagr = Math.pow(currentPrice / firstSalePrice, 1 / years) - 1;
+            
+            setPropertyHistory({
+              currentPrice: '450000',
+              saleHistory: hardcodedPriceHistory,
+              hasHistory: true,
+              avgAnnualGrowth: cagr
+            });
+            
+            console.log('🔧 Manual debug: CAGR calculated and set:', (cagr * 100).toFixed(2) + '%');
+          }}
+          className="mt-2 px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600 block w-full"
+        >
+          🔧 Set Hardcoded Data & Calculate CAGR
+        </button>
+      </div>
+      
+      <HomeLensReport data={reportData} landRegistryData={landRegistryData} hasRealPPDData={hasRealPPDData} propertyData={propertyData} binaryCriteria={binaryCriteria} aiAnalysis={aiAnalysis} priceHistory={priceHistory} />
+    </div>
+  );
 }

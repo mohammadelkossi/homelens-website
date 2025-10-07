@@ -7,7 +7,7 @@ const openai = new OpenAI({
 
 export async function POST(request: NextRequest) {
   try {
-    const { listingText, features, images = [] } = await request.json();
+    const { listingText, features, images = [], url } = await request.json();
 
     if (!listingText) {
       return NextResponse.json({
@@ -26,6 +26,34 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Analyzing binary features:', features);
     console.log('📝 Listing text length:', listingText.length);
     console.log('📸 Property images available:', images.length);
+    console.log('🔗 Property URL:', url);
+
+    // If no images provided but we have a URL, try to extract images
+    let propertyImages = images;
+    if (images.length === 0 && url) {
+      console.log('📸 No images provided, attempting to extract from URL...');
+      try {
+        const scraperResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/scrape-rightmove-simple`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            rightmoveUrl: url
+          })
+        });
+        
+        if (scraperResponse.ok) {
+          const scraperData = await scraperResponse.json();
+          if (scraperData.success && scraperData.images) {
+            propertyImages = scraperData.images;
+            console.log('✅ Extracted images from URL:', propertyImages.length);
+          }
+        }
+      } catch (error) {
+        console.log('⚠️ Failed to extract images from URL:', error);
+      }
+    }
 
     // Create the analysis prompt
     const featureList = Object.keys(features).join(', ');
@@ -55,7 +83,7 @@ ANALYSIS GUIDELINES:
 - **Garage**: Look for "garage", "integral garage", "detached garage", "single garage", "double garage"
 - **Garden**: Look for "garden", "rear garden", "front garden", "patio", "lawn", "outdoor space"
 - **Parking**: Look for "parking", "off-road parking", "driveway", "parking space", "garage parking"
-- **New Build**: Look for "new build", "newly built", "recently constructed", "new development", "brand new"
+- **New Build**: ONLY return true if explicitly stated as "new build" property. Do NOT classify as new build if it mentions "new estate", "new development", "modern", "contemporary", "recently built", or similar terms. Only "new build" qualifies.
 
 IMPORTANT:
 - Only return true if the feature is explicitly mentioned or clearly indicated
@@ -86,12 +114,12 @@ IMPORTANT:
 
     // If we have images, analyze them with computer vision
     let imageAnalysisResult = {};
-    if (images && images.length > 0) {
+    if (propertyImages && propertyImages.length > 0) {
       console.log('🖼️ Analyzing property images with computer vision...');
       
       try {
         // Download and analyze the first few images
-        const imageAnalysisPromises = images.slice(0, 3).map(async (imageUrl, index) => {
+        const imageAnalysisPromises = propertyImages.slice(0, 3).map(async (imageUrl, index) => {
           try {
             console.log(`📥 Downloading image ${index + 1}:`, imageUrl);
             const imageResponse = await fetch(imageUrl, {
@@ -127,7 +155,7 @@ ANALYSIS GUIDELINES:
 - **Garage**: Look for garage doors, garage structures, cars in garages
 - **Garden**: Look for outdoor spaces, lawns, patios, plants, garden furniture
 - **Parking**: Look for driveways, parking spaces, cars parked, parking areas
-- **New Build**: Look for modern construction, new materials, contemporary design
+- **New Build**: ONLY return true if you can clearly see evidence of a "new build" property (very recent construction, brand new materials, construction signs, etc.). Do NOT classify as new build based on modern design, contemporary style, or new-looking appearance alone.
 
 IMPORTANT:
 - Only return true if you can clearly see the feature in the image

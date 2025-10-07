@@ -10,7 +10,8 @@ export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleGetStarted = () => {
-    router.push('/preferences-redesign');
+    console.log('🚀 Get Started button clicked!');
+    window.location.href = '/preferences-redesign';
   };
 
   const toggleFAQ = (index: number) => {
@@ -101,7 +102,7 @@ export default function LandingPage() {
               <div className="flex justify-start">
               <button
                 onClick={handleGetStarted}
-                className="px-6 md:px-8 py-3 md:py-4 text-white rounded-xl transition-colors text-base md:text-lg font-medium hover:opacity-90"
+                className="px-6 md:px-8 py-3 md:py-4 text-white rounded-xl transition-colors text-base md:text-lg font-medium hover:opacity-90 cursor-pointer"
                 style={{backgroundColor: '#368F8B', fontFamily: 'Satoshi, sans-serif'}}
               >
                 Get Started for Free
@@ -161,8 +162,8 @@ export default function LandingPage() {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 max-w-5xl mx-auto">
             <div className="text-center">
-              <div className="w-20 h-20 flex items-center justify-center mx-auto mb-6">
-                <span className="text-5xl">📝</span>
+              <div className="w-20 h-20 flex items-center justify-center mx-auto mb-6" style={{backgroundColor: '#368F8B', borderRadius: '50%'}}>
+                <Calculator className="w-10 h-10 text-white" />
               </div>
               <h3 className="text-2xl font-bold mb-4" style={{color: '#160F29', fontFamily: 'Satoshi, sans-serif'}}>Share your preferences</h3>
               <p className="leading-relaxed" style={{color: '#246A73', fontFamily: 'Satoshi, sans-serif'}}>
@@ -170,8 +171,8 @@ export default function LandingPage() {
               </p>
             </div>
             <div className="text-center">
-              <div className="w-20 h-20 flex items-center justify-center mx-auto mb-6">
-                <span className="text-5xl">🔍</span>
+              <div className="w-20 h-20 flex items-center justify-center mx-auto mb-6" style={{backgroundColor: '#368F8B', borderRadius: '50%'}}>
+                <TrendingUp className="w-10 h-10 text-white" />
               </div>
               <h3 className="text-2xl font-bold mb-4" style={{color: '#160F29', fontFamily: 'Satoshi, sans-serif'}}>Analyse any property</h3>
               <p className="leading-relaxed" style={{color: '#246A73', fontFamily: 'Satoshi, sans-serif'}}>
@@ -179,8 +180,8 @@ export default function LandingPage() {
               </p>
             </div>
             <div className="text-center">
-              <div className="w-20 h-20 flex items-center justify-center mx-auto mb-6">
-                <span className="text-5xl">📊</span>
+              <div className="w-20 h-20 flex items-center justify-center mx-auto mb-6" style={{backgroundColor: '#368F8B', borderRadius: '50%'}}>
+                <Star className="w-10 h-10 text-white" />
               </div>
               <h3 className="text-2xl font-bold mb-4" style={{color: '#160F29', fontFamily: 'Satoshi, sans-serif'}}>Make informed decisions</h3>
               <p className="leading-relaxed" style={{color: '#246A73', fontFamily: 'Satoshi, sans-serif'}}>
@@ -191,7 +192,7 @@ export default function LandingPage() {
         </section>
 
         {/* What's included in the report */}
-        <section className="mb-16 md:mb-20 py-8 md:py-16">
+        <section id="features" className="mb-16 md:mb-20 py-8 md:py-16">
           <div className="max-w-6xl mx-auto px-4">
             <div className="text-center mb-12 md:mb-20">
               <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{color: '#160F29', fontFamily: 'Satoshi, sans-serif'}}>What's included</h2>
@@ -253,7 +254,6 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
-
 
         {/* Comparison Table */}
         <section className="mb-20" style={{backgroundColor: '#160F29', paddingTop: '6.5rem', paddingBottom: '6.5rem'}}>
@@ -394,9 +394,8 @@ export default function LandingPage() {
           </div>
         </section>
 
-
         {/* FAQ Section */}
-        <section id="faq" className="mb-12 md:mb-18">
+        <section id="faq" className="mb-16 md:mb-20">
           <div className="text-center mb-12 md:mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{color: '#160F29', fontFamily: 'Satoshi, sans-serif'}}>Frequently Asked Questions</h2>
             <p className="text-lg md:text-xl" style={{color: '#246A73', fontFamily: 'Satoshi, sans-serif'}}>Everything you need to know about HomeLens</p>
@@ -669,7 +668,7 @@ export default function LandingPage() {
           <div className="flex justify-center">
             <button
               onClick={handleGetStarted}
-              className="px-6 md:px-8 py-3 md:py-4 text-white rounded-xl transition-colors text-base md:text-lg font-medium hover:opacity-90"
+              className="px-6 md:px-8 py-3 md:py-4 text-white rounded-xl transition-colors text-base md:text-lg font-medium hover:opacity-90 cursor-pointer"
               style={{backgroundColor: '#368F8B', fontFamily: 'Satoshi, sans-serif'}}
             >
               Get Started
@@ -693,15 +692,15 @@ export default function LandingPage() {
                   style={{color: '#246A73', fontFamily: 'Satoshi, sans-serif'}}
                 >
                   Privacy Policy
-        </a>
-        <a
+                </a>
+                <a
                   href="/cookie-policy" 
                   className="text-sm transition-colors hover:opacity-80"
                   style={{color: '#246A73', fontFamily: 'Satoshi, sans-serif'}}
                 >
                   Cookie Policy
-        </a>
-        <a
+                </a>
+                <a
                   href="/accessibility" 
                   className="text-sm transition-colors hover:opacity-80"
                   style={{color: '#246A73', fontFamily: 'Satoshi, sans-serif'}}

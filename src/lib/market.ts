@@ -2,6 +2,10 @@
 const LAND_REGISTRY_API_BASE = 'https://use-land-property-data.service.gov.uk/api/v1';
 const LAND_REGISTRY_API_KEY = process.env.LAND_REGISTRY_API_KEY;
 
+// Import real Land Registry data parser
+import { getLandRegistryPricePerSqm, getLandRegistryGrowthRate } from './landRegistryData';
+import { enhancedLandRegistry, YearlyTrendData, PricePerSqmData, TimeOnMarketData } from './enhancedLandRegistry';
+
 // Simple in-memory cache (in production, use Redis or similar)
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
@@ -42,6 +46,12 @@ interface LandRegistryResponse {
 }
 
 async function fetchLandRegistryData(postcodeArea: string, months: number = 12): Promise<LandRegistryPricePaidRecord[]> {
+  // Check if API key is available
+  if (!LAND_REGISTRY_API_KEY) {
+    console.warn('Land Registry API key not configured, returning empty data');
+    return [];
+  }
+
   // Check cache first
   const cacheKey = `land_registry_${postcodeArea}_${months}`;
   const cached = getCachedData<LandRegistryPricePaidRecord[]>(cacheKey);
@@ -49,10 +59,6 @@ async function fetchLandRegistryData(postcodeArea: string, months: number = 12):
     return cached;
   }
 
-  if (!LAND_REGISTRY_API_KEY) {
-    console.warn('Land Registry API key not configured');
-    return [];
-  }
 
   try {
     const endDate = new Date();
@@ -315,6 +321,100 @@ export function derivePostcodeArea(fullPostcode: string): string {
   const trimmed = (fullPostcode || '').toUpperCase().trim();
   const match = trimmed.match(/^([A-Z]{1,2}\d[A-Z]?)\b/);
   return match ? match[1] : trimmed.split(' ')[0] || trimmed;
+}
+
+// Enhanced Land Registry Analytics Functions
+
+/**
+ * Get 5-year price trend data for postcode and property type
+ */
+export async function fetchFiveYearTrend(postcode: string, propertyType: string): Promise<YearlyTrendData[]> {
+  try {
+    console.log(`🔍 fetchFiveYearTrend called with postcode="${postcode}", propertyType="${propertyType}"`);
+    const result = await enhancedLandRegistry.getFiveYearTrend(postcode, propertyType);
+    console.log(`🔍 fetchFiveYearTrend result:`, result);
+    return result;
+  } catch (error) {
+    console.error('❌ Error fetching 5-year trend:', error);
+    return [];
+  }
+}
+
+/**
+ * Get street sales count for past year
+ */
+export async function fetchStreetSalesCount(streetName: string, propertyType: string): Promise<number> {
+  try {
+    return await enhancedLandRegistry.getStreetSalesCount(streetName, propertyType);
+  } catch (error) {
+    console.error('Error fetching street sales count:', error);
+    return 0;
+  }
+}
+
+/**
+ * Get street average price for past year
+ */
+export async function fetchStreetAveragePrice(streetName: string, propertyType: string): Promise<number> {
+  try {
+    return await enhancedLandRegistry.getStreetAveragePrice(streetName, propertyType);
+  } catch (error) {
+    console.error('Error fetching street average price:', error);
+    return 0;
+  }
+}
+
+/**
+ * Get enhanced price per square metre data (with EPC integration)
+ */
+export async function fetchEnhancedPricePerSqm(postcode: string, propertyType: string): Promise<PricePerSqmData> {
+  try {
+    console.log(`🔍 fetchEnhancedPricePerSqm called with postcode="${postcode}", propertyType="${propertyType}"`);
+    const result = await enhancedLandRegistry.getPricePerSquareMetre(postcode, propertyType);
+    console.log(`🔍 fetchEnhancedPricePerSqm result:`, result);
+    return result;
+  } catch (error) {
+    console.error('❌ Error fetching enhanced price per sqm:', error);
+    return {
+      averagePricePerSqm: 0,
+      salesCount: 0,
+      totalProperties: 0
+    };
+  }
+}
+
+/**
+ * Get estimated time on market based on historical data and market conditions
+ */
+export async function fetchTimeOnMarket(
+  postcode: string, 
+  propertyType: string, 
+  listingPrice: number,
+  propertySize?: number
+): Promise<TimeOnMarketData> {
+  try {
+    console.log(`🔍 fetchTimeOnMarket called with postcode="${postcode}", propertyType="${propertyType}", price="${listingPrice}"`);
+    const result = await enhancedLandRegistry.getTimeOnMarket(postcode, propertyType, listingPrice, propertySize);
+    console.log(`🔍 fetchTimeOnMarket result:`, result);
+    return result;
+  } catch (error) {
+    console.error('❌ Error fetching time on market:', error);
+    return {
+      estimatedDays: 45,
+      percentile: 50,
+      confidence: 'low',
+      factors: {
+        marketCondition: 'normal',
+        pricePositioning: 'fair',
+        propertyType: 'average'
+      },
+      historicalData: {
+        averageTimeToSell: 45,
+        medianTimeToSell: 45,
+        sampleSize: 0
+      }
+    };
+  }
 }
 
 

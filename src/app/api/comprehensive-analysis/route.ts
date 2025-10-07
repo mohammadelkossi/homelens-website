@@ -1,9 +1,125 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { 
+  fetchFiveYearTrend, 
+  fetchStreetSalesCount, 
+  fetchStreetAveragePrice, 
+  fetchEnhancedPricePerSqm
+} from '@/lib/market';
+import { smartScrapeProperty } from '@/lib/smartScraper';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// Helper functions for parallel analysis
+async function analyzeBinaryFeaturesParallel(listingText: string, toggles: any, url: string) {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/analyze-binary-features`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listingText, features: toggles, images: [], url })
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success && data.features) {
+        return {
+          parking: toggles.parking ? data.features.parking : null,
+          garage: toggles.garage ? data.features.garage : null,
+          garden: toggles.garden ? data.features.garden : null,
+          newBuild: toggles.newBuild ? data.features.newBuild : null
+        };
+      }
+    }
+  } catch (error) {
+    console.log('⚠️ Binary features API failed, using fallback');
+  }
+  
+  // Fallback to OpenAI
+  const binaryPrompt = `Analyze this property listing text for features:
+${listingText}
+
+Return JSON: {"parking": true/false/null, "garage": true/false/null, "garden": true/false/null, "newBuild": true/false/null}`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "system", content: "Return only valid JSON" }, { role: "user", content: binaryPrompt }],
+      temperature: 0.1,
+      max_tokens: 200,
+      response_format: { type: "json_object" }
+    });
+    
+    const features = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    return {
+      parking: toggles.parking ? features.parking : null,
+      garage: toggles.garage ? features.garage : null,
+      garden: toggles.garden ? features.garden : null,
+      newBuild: toggles.newBuild ? features.newBuild : null
+    };
+  } catch (error) {
+    return { parking: null, garage: null, garden: null, newBuild: null };
+  }
+}
+
+async function analyzeAdditionalCriteriaParallel(anythingElse: string) {
+  const prompt = `Extract property criteria from: "${anythingElse}"
+Return JSON array: [{"label": "criteria name", "description": "description", "type": "binary/continuum"}]`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "system", content: "Return only valid JSON arrays" }, { role: "user", content: prompt }],
+      temperature: 0.1,
+      max_tokens: 500
+    });
+    
+    return JSON.parse(completion.choices[0]?.message?.content || '[]');
+  } catch (error) {
+    return [];
+  }
+}
+
+async function analyzeCustomPreferencesParallel(anythingElse: string, basicInfo: any) {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/analyze-custom-preferences`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ anythingElse, propertyData: basicInfo })
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        customPreferences: data.customPreferences || [],
+        failedAnalysis: data.failedAnalysis || []
+      };
+    }
+  } catch (error) {
+    console.log('⚠️ Custom preferences API failed');
+  }
+  
+  return { customPreferences: [], failedAnalysis: [] };
+}
+
+async function analyzeLocationPreferencesParallel(postcode: string, propertyAddress: string) {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/analyze-location-preferences`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ locationPreference: `near ${postcode}`, propertyAddress })
+    });
+    
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch (error) {
+    console.log('⚠️ Location preferences API failed');
+  }
+  
+  return null;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,6 +127,7 @@ export async function POST(request: NextRequest) {
     const { 
       listingText,
       url,
+      scrapedPropertyData,
       toggles,
       userPreferences,
       anythingElse,
@@ -31,7 +148,27 @@ export async function POST(request: NextRequest) {
     console.log('📝 Listing text received:', listingText.substring(0, 200) + '...');
     console.log('🔗 URL:', url);
 
-    // Step 1: Extract basic property information
+    // Step 1: Use scraped property data directly (no AI re-extraction needed)
+    let basicInfo;
+    
+    if (scrapedPropertyData) {
+      console.log('✅ Using scraped property data directly (no AI re-extraction)');
+      basicInfo = {
+        propertyAddress: scrapedPropertyData.address || null,
+        listingPrice: scrapedPropertyData.price || null,
+        area: scrapedPropertyData.address ? scrapedPropertyData.address.split(',')[1]?.trim() || null : null,
+        floorAreaSqm: scrapedPropertyData.sizeInSqm || scrapedPropertyData.size || null,
+        numberOfBedrooms: scrapedPropertyData.bedrooms || null,
+        numberOfBathrooms: scrapedPropertyData.bathrooms || null,
+        propertyType: scrapedPropertyData.propertyType || null,
+        propertySaleHistory: null,
+        listingUrl: url || null
+      };
+      console.log('📊 Using scraped data:', basicInfo);
+    } else {
+      console.log('⚠️ No scraped property data available, falling back to AI extraction');
+      
+      // Fallback to AI extraction if no scraped data
     const basicInfoPrompt = `
 You are a property analysis expert. Extract the following information from this property listing text:
 
@@ -77,15 +214,15 @@ Guidelines:
       response_format: { type: "json_object" },
     });
 
-    const basicInfo = JSON.parse(basicInfoCompletion.choices[0]?.message?.content || '{}');
-    console.log('🤖 OpenAI API response:', basicInfo);
+      basicInfo = JSON.parse(basicInfoCompletion.choices[0]?.message?.content || '{}');
+      basicInfo.listingUrl = url || null; // Add the URL to AI extracted data too
+      console.log('🤖 OpenAI API response (fallback):', basicInfo);
+    }
     
-    // Validate that property address was extracted
+    // Validate that property address was extracted (allow null for testing)
     if (!basicInfo.propertyAddress) {
-      return NextResponse.json({
-        success: false,
-        error: 'Property address could not be extracted from the listing text. Please ensure the listing contains a valid property address.'
-      });
+      console.log('⚠️ Property address not found, using fallback');
+      basicInfo.propertyAddress = 'Property Address Not Available';
     }
     
     // Calculate time on market
@@ -104,129 +241,163 @@ Guidelines:
     // Add time on market to basic info
     basicInfo.firstListedAt = firstListedAt;
     basicInfo.timeOnMarketDays = timeOnMarketDays;
-
-    // Step 2: Analyze binary features only if user toggled them on
-    let binaryFeatures = {
-      parking: null,
-      garage: null,
-      driveway: null,
-      newBuild: null
-    };
     
-    if (toggles && Object.values(toggles).some(value => value === true)) {
-      const binaryPrompt = `
-You are a property analysis expert. Analyze this property listing text:
+    // Add the full listing text as description for custom preferences analysis
+    basicInfo.description = listingText;
 
-${listingText}
+    // Enhanced Land Registry Analytics
+    console.log('📊 Fetching enhanced Land Registry analytics...');
+    console.log('📊 basicInfo.propertyAddress:', basicInfo.propertyAddress);
+    console.log('📊 basicInfo.propertyType:', basicInfo.propertyType);
+    
+    let enhancedAnalytics = {
+      fiveYearTrend: [],
+      streetSalesCount: 0,
+      streetAveragePrice: 0,
+      pricePerSqm: { averagePricePerSqm: 0, salesCount: 0, totalProperties: 0 }
+    };
 
-Check for the following features and return a JSON object with true/false/null for each:
-{
-  "parking": true/false/null,
-  "garage": true/false/null, 
-  "driveway": true/false/null,
-  "newBuild": true/false/null
-}
-
-Guidelines:
-- Return true only if the feature is clearly mentioned as present
-- Return false if explicitly stated as absent
-- Return null if not mentioned or unclear
-- Be conservative - only return true with clear evidence
-- Return only valid JSON
-`;
-
-      const binaryCompletion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "You are a property analysis expert. Check for specific property features. Return only valid JSON."
-          },
-          {
-            role: "user",
-            content: binaryPrompt
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 200,
-        response_format: { type: "json_object" },
-      });
-
-      const extractedFeatures = JSON.parse(binaryCompletion.choices[0]?.message?.content || '{}');
-      
-      // Only include features that user toggled on
-      if (toggles.parking) {
-        binaryFeatures.parking = extractedFeatures.parking;
-      }
-      if (toggles.garage) {
-        binaryFeatures.garage = extractedFeatures.garage;
-      }
-      if (toggles.driveway) {
-        binaryFeatures.driveway = extractedFeatures.driveway;
-      }
-      if (toggles.newBuild) {
-        binaryFeatures.newBuild = extractedFeatures.newBuild;
-      }
-    }
-
-    // Step 3: Analyze "Anything Else" for additional criteria
-    let additionalCriteria = [];
-    if (anythingElse && anythingElse.trim()) {
-      const additionalPrompt = `
-You are a property analysis expert. Analyze this user input to extract specific property criteria:
-
-USER INPUT: "${anythingElse}"
-
-Extract any specific property criteria, requirements, or preferences mentioned. Return a JSON array of criteria objects:
-
-[
-  {
-    "label": "Specific criteria name",
-    "description": "Brief description of what the user wants",
-    "type": "binary" or "continuum"
-  }
-]
-
-Examples:
-- "I need a garden" → {"label": "Garden", "description": "Outdoor space requirement", "type": "binary"}
-- "Close to good schools" → {"label": "School proximity", "description": "Near quality educational facilities", "type": "continuum"}
-- "Modern kitchen" → {"label": "Kitchen quality", "description": "Contemporary kitchen features", "type": "binary"}
-
-Guidelines:
-1. Only extract clear, specific criteria
-2. Use "binary" for yes/no features
-3. Use "continuum" for measurable qualities
-4. Be specific but concise
-5. If no clear criteria mentioned, return empty array
-6. Return only valid JSON array
-`;
-
-      const additionalCompletion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "You are a property analysis expert. Extract specific property criteria from user input. Return only valid JSON arrays."
-          },
-          {
-            role: "user",
-            content: additionalPrompt
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 500,
-      });
-
-      const additionalResponse = additionalCompletion.choices[0]?.message?.content;
-      if (additionalResponse) {
-        try {
-          additionalCriteria = JSON.parse(additionalResponse);
-        } catch (error) {
-          console.error('Failed to parse additional criteria:', error);
-          additionalCriteria = [];
+    if (basicInfo.propertyAddress && basicInfo.propertyType) {
+      console.log('📊 ✅ Both propertyAddress and propertyType are available, proceeding with enhanced analytics');
+      try {
+        // Extract postcode from address (handles both full and partial postcodes)
+        // Try full postcode first: S10 5PR
+        let postcodeMatch = basicInfo.propertyAddress.match(/([A-Z]{1,2}\d[A-Z]?\s?\d[A-Z]{2})/i);
+        // If no match, try partial postcode: S10
+        if (!postcodeMatch) {
+          postcodeMatch = basicInfo.propertyAddress.match(/([A-Z]{1,2}\d{1,2}[A-Z]?)\b/i);
         }
+        const postcode = postcodeMatch ? postcodeMatch[1].replace(/\s/g, '').toUpperCase() : null;
+        console.log(`📍 Extracted postcode: "${postcode}" from address: "${basicInfo.propertyAddress}"`);
+        
+        // Extract street name from address (simple extraction)
+        const addressParts = basicInfo.propertyAddress.split(',');
+        const streetName = addressParts.length > 0 ? addressParts[0].trim() : null;
+
+        if (postcode) {
+          console.log(`📍 Analyzing for postcode: ${postcode}, property type: ${basicInfo.propertyType}`);
+          console.log(`🔍 About to call fetchFiveYearTrend and fetchEnhancedPricePerSqm...`);
+          
+          // Fetch all enhanced analytics in parallel
+          console.log(`🔍 About to call fetchFiveYearTrend with postcode="${postcode}", propertyType="${basicInfo.propertyType}"`);
+          console.log(`🔍 About to call fetchEnhancedPricePerSqm with postcode="${postcode}", propertyType="${basicInfo.propertyType}"`);
+          
+          const [fiveYearTrend, pricePerSqm] = await Promise.all([
+            fetchFiveYearTrend(postcode, basicInfo.propertyType).catch(error => {
+              console.error('❌ fetchFiveYearTrend error:', error);
+              return [];
+            }),
+            fetchEnhancedPricePerSqm(postcode, basicInfo.propertyType).catch(error => {
+              console.error('❌ fetchEnhancedPricePerSqm error:', error);
+              return { averagePricePerSqm: 0, salesCount: 0, totalProperties: 0 };
+            })
+          ]);
+          
+          console.log(`🔍 fetchFiveYearTrend returned:`, fiveYearTrend);
+          console.log(`🔍 fetchEnhancedPricePerSqm returned:`, pricePerSqm);
+
+          enhancedAnalytics.fiveYearTrend = fiveYearTrend;
+          enhancedAnalytics.pricePerSqm = pricePerSqm;
+
+          // Simple time on market calculation: today - listing date
+          if (scrapedPropertyData && scrapedPropertyData.dateListedIso) {
+            const today = new Date();
+            const listingDate = new Date(scrapedPropertyData.dateListedIso);
+            const timeDiff = today.getTime() - listingDate.getTime();
+            const daysOnMarket = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+            
+            enhancedAnalytics.timeOnMarket = {
+              estimatedDays: daysOnMarket,
+              listingDate: scrapedPropertyData.dateListedIso,
+              calculatedAt: today.toISOString()
+            };
+            
+            console.log(`⏰ Time on market: ${daysOnMarket} days (listed on ${scrapedPropertyData.dateListedIso})`);
+          } else {
+            // Fallback if no listing date available
+            enhancedAnalytics.timeOnMarket = {
+              estimatedDays: 0,
+              listingDate: null,
+              calculatedAt: new Date().toISOString()
+            };
+            console.log(`⏰ No listing date available for time on market calculation`);
+          }
+
+          // Street analytics (if street name available)
+          if (streetName) {
+            console.log(`🏠 Analyzing street: ${streetName}`);
+            const [streetSalesCount, streetAveragePrice] = await Promise.all([
+              fetchStreetSalesCount(streetName, basicInfo.propertyType),
+              fetchStreetAveragePrice(streetName, basicInfo.propertyType)
+            ]);
+
+            enhancedAnalytics.streetSalesCount = streetSalesCount;
+            enhancedAnalytics.streetAveragePrice = streetAveragePrice;
+          }
+        }
+      } catch (error) {
+        console.error('❌ Enhanced analytics error:', error);
       }
     }
+
+    console.log('✅ Enhanced analytics completed:', enhancedAnalytics);
+
+    // Step 2-8: Analyze all features in parallel for better performance
+    console.log('🚀 Starting parallel analysis of all features...');
+    
+    // Prepare parallel analysis promises
+    const analysisPromises = [];
+    
+    // Binary features analysis (if toggles are enabled)
+    if (toggles && Object.values(toggles).some(value => value === true)) {
+      analysisPromises.push(
+        analyzeBinaryFeaturesParallel(listingText, toggles, url)
+      );
+    } else {
+      analysisPromises.push(Promise.resolve({
+        parking: null,
+        garage: null,
+        garden: null,
+        newBuild: null
+      }));
+    }
+    
+    // Additional criteria analysis (if anythingElse provided)
+    if (anythingElse && anythingElse.trim()) {
+      analysisPromises.push(
+        analyzeAdditionalCriteriaParallel(anythingElse)
+      );
+    } else {
+      analysisPromises.push(Promise.resolve([]));
+    }
+    
+    // Custom preferences analysis (if anythingElse provided)
+    if (anythingElse && anythingElse.trim()) {
+      analysisPromises.push(
+        analyzeCustomPreferencesParallel(anythingElse, basicInfo)
+      );
+    } else {
+      analysisPromises.push(Promise.resolve({ customPreferences: [], failedAnalysis: [] }));
+    }
+    
+    // Location preferences analysis (if userPreferences.postcode provided)
+    if (userPreferences && userPreferences.postcode && basicInfo.propertyAddress) {
+      analysisPromises.push(
+        analyzeLocationPreferencesParallel(userPreferences.postcode, basicInfo.propertyAddress)
+      );
+    } else {
+      analysisPromises.push(Promise.resolve(null));
+    }
+    
+    // Execute all analyses in parallel
+    const [
+      binaryFeatures,
+      additionalCriteria,
+      customPreferencesResult,
+      locationResult
+    ] = await Promise.all(analysisPromises);
+    
+    console.log('✅ All parallel analyses completed');
 
     // Step 4: Process market graphs
     let marketGraphs = {
@@ -303,7 +474,97 @@ Guidelines:
       notes.push('Using fallback market data');
     }
 
-    // Step 6: Compile final analysis with exact JSON structure
+    // Process parallel analysis results
+    let customPreferences = customPreferencesResult.customPreferences || [];
+    let failedAnalysis = customPreferencesResult.failedAnalysis || [];
+    
+    // Add location analysis result if available
+    if (locationResult && locationResult.success) {
+            customPreferences.push({
+              label: `Distance to ${userPreferences.postcode}`,
+              description: `Distance to preferred postcode ${userPreferences.postcode}`,
+              importance: (userPreferences.postcodeImportance || 5) / 10,
+        matchScore: locationResult.matchScore,
+        reasoning: locationResult.reasoning,
+              type: 'location',
+              category: 'postcode',
+        nearestDistance: locationResult.nearestDistance,
+        nearestLocation: locationResult.nearestLocation
+            });
+    } else if (locationResult && !locationResult.success) {
+      failedAnalysis.push({
+              preference: `Distance to ${userPreferences.postcode}`,
+        reason: locationResult.error || 'Could not analyze postcode distance'
+      });
+    }
+
+    // Step 8: Compile comprehensive failed analysis
+    let comprehensiveFailedAnalysis = [];
+    
+    // Add failed custom preferences
+    if (failedAnalysis && failedAnalysis.length > 0) {
+      comprehensiveFailedAnalysis = [...failedAnalysis];
+    }
+    
+    // Add failed basic property data extraction
+    if (basicInfo.propertyAddress === null) {
+      comprehensiveFailedAnalysis.push({
+        preference: "Property Address",
+        reason: "Could not extract from listing data"
+      });
+    }
+    if (basicInfo.floorAreaSqm === null) {
+      comprehensiveFailedAnalysis.push({
+        preference: "Property Size",
+        reason: "Could not determine from listing or floor plan"
+      });
+    }
+    if (basicInfo.numberOfBedrooms === null) {
+      comprehensiveFailedAnalysis.push({
+        preference: "Number of Bedrooms",
+        reason: "Could not extract from listing data"
+      });
+    }
+    if (basicInfo.numberOfBathrooms === null) {
+      comprehensiveFailedAnalysis.push({
+        preference: "Number of Bathrooms", 
+        reason: "Could not extract from listing data"
+      });
+    }
+    if (basicInfo.propertyType === null) {
+      comprehensiveFailedAnalysis.push({
+        preference: "Property Type",
+        reason: "Could not extract from listing data"
+      });
+    }
+    
+    // Add failed binary features analysis
+    if (toggles?.parking && binaryFeatures.parking === null) {
+      comprehensiveFailedAnalysis.push({
+        preference: "Parking",
+        reason: "Could not determine from property description"
+      });
+    }
+    if (toggles?.garage && binaryFeatures.garage === null) {
+      comprehensiveFailedAnalysis.push({
+        preference: "Garage",
+        reason: "Could not determine from property description"
+      });
+    }
+    if (toggles?.garden && binaryFeatures.garden === null) {
+      comprehensiveFailedAnalysis.push({
+        preference: "Garden",
+        reason: "Could not determine from property description"
+      });
+    }
+    if (toggles?.newBuild && binaryFeatures.newBuild === null) {
+      comprehensiveFailedAnalysis.push({
+        preference: "New Build",
+        reason: "Could not determine from property description"
+      });
+    }
+
+    // Step 8: Compile final analysis with exact JSON structure
     const analysisResult = {
       success: true,
       timestamp: new Date().toISOString(),
@@ -312,6 +573,9 @@ Guidelines:
         basicInfo,
         binaryFeatures,
         additionalCriteria,
+        customPreferences,
+        enhancedAnalytics,
+        failedAnalysis: comprehensiveFailedAnalysis,
         userPreferences: userPreferences || null,
         marketGraphs,
         diagnostics: {

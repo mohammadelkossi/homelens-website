@@ -11,7 +11,7 @@ function Chip({ selected, children, onClick }: { selected?: boolean; children: R
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-2 rounded-full border text-sm transition
+      className={`px-3 py-2 rounded-full border text-sm transition cursor-pointer
       ${selected ? "bg-black text-white border-black" : "text-gray-800 border-gray-200 hover:border-gray-300"}`}
       style={selected ? {} : {backgroundColor: '#F3DFC1'}}
       type="button"
@@ -102,6 +102,9 @@ function PropertyPreferencesContent() {
   const [preferredSpace, setPreferredSpace] = useState<string | undefined>(undefined);
   const [timeOnMarket, setTimeOnMarket] = useState<string | undefined>(undefined);
   const [anythingElse, setAnythingElse] = useState<string>("");
+  const [anythingElseEntries, setAnythingElseEntries] = useState<Array<{id: string, text: string, importance: number}>>([
+    { id: '1', text: '', importance: 5 }
+  ]);
   
   // Importance sliders for each criteria
   const [bedroomsImportance, setBedroomsImportance] = useState<number>(5);
@@ -115,8 +118,32 @@ function PropertyPreferencesContent() {
   const [timeOnMarketImportance, setTimeOnMarketImportance] = useState<number>(5);
   const [anythingElseImportance, setAnythingElseImportance] = useState<number>(5);
 
+  // Functions to handle multiple "Anything Else" entries
+  const addAnythingElseEntry = () => {
+    const newId = (anythingElseEntries.length + 1).toString();
+    setAnythingElseEntries([...anythingElseEntries, { id: newId, text: '', importance: 5 }]);
+  };
+
+  const updateAnythingElseEntry = (id: string, text: string) => {
+    setAnythingElseEntries(entries => 
+      entries.map(entry => entry.id === id ? { ...entry, text } : entry)
+    );
+  };
+
+  const updateAnythingElseImportance = (id: string, importance: number) => {
+    setAnythingElseEntries(entries => 
+      entries.map(entry => entry.id === id ? { ...entry, importance } : entry)
+    );
+  };
+
+  const removeAnythingElseEntry = (id: string) => {
+    if (anythingElseEntries.length > 1) {
+      setAnythingElseEntries(entries => entries.filter(entry => entry.id !== id));
+    }
+  };
+
   const progress = useMemo(() => {
-    let total = 6; // bedrooms, bathrooms, type, any feature, preferred space, time on market
+    let total = 7; // bedrooms, bathrooms, type, any feature, preferred space, time on market, anything else
     let done = 0;
     if (bedrooms) done++;
     if (bathrooms) done++;
@@ -124,8 +151,9 @@ function PropertyPreferencesContent() {
     if (Object.values(features).some(Boolean)) done++;
     if (preferredSpace) done++;
     if (timeOnMarket) done++;
+    if (anythingElseEntries.some(entry => entry.text.trim())) done++;
     return Math.round((done / total) * 100);
-  }, [bedrooms, bathrooms, propertyType, features, preferredSpace, timeOnMarket]);
+  }, [bedrooms, bathrooms, propertyType, features, preferredSpace, timeOnMarket, anythingElseEntries]);
 
   const handleSubmit = async () => {
     if (!rightmoveUrl.trim()) {
@@ -165,35 +193,32 @@ function PropertyPreferencesContent() {
     };
 
     try {
-      // We'll update this with scraped data after we get the history
-      let propertyData = {
-        address: "123 Abbey Lane, Sheffield S10",
-        price: 350000,
-        bedrooms: 3,
-        bathrooms: 2,
-        propertyType: "Semi-Detached",
-        size: 108,
-        description: "A beautiful property in a great location with modern features."
-      };
-
-      const marketMetrics = {
-        pricePerSqm: 3920,
-        avgPricePerSqmPostcodeSold: 3800,
-        avgPctPriceGrowthPerYear: 2.1,
-        timeOnMarketDays: 21,
-        roadSalesLastYear: 3,
-        onMarketCountForConfig: 2
-      };
+      // No mock data - we'll use only real scraped data
+      let propertyData = null;
+      let marketMetrics = null;
 
       const userPrefs = {
+        features: features, // Include the features object
         featuresImportance,
         postcodeImportance,
+        bedroomsImportance,
         bathroomsImportance,
+        propertyTypeImportance,
+        spaceImportance,
         timeOnMarketImportance,
-        preferredSpace,
-        timeOnMarket,
-        anythingElse: anythingElse.trim() || undefined
+        anythingElseImportance,
+        // Include actual preference values
+        postcode: postcode || undefined,
+        bedrooms: bedrooms || undefined,
+        bathrooms: bathrooms || undefined,
+        propertyType: propertyType || undefined,
+        preferredSpace: preferredSpace || undefined,
+        timeOnMarket: timeOnMarket || undefined,
+        anythingElse: anythingElseEntries.filter(entry => entry.text.trim()).map(entry => entry.text.trim()).join('; ') || undefined,
+        anythingElseEntries: anythingElseEntries.filter(entry => entry.text.trim())
       };
+
+      console.log('🔍 User preferences being sent:', userPrefs);
 
       // Perform comprehensive analysis
       console.log('🔍 Starting comprehensive property analysis...');
@@ -201,26 +226,51 @@ function PropertyPreferencesContent() {
       // Use direct listing text for testing (no scraper)
       let listingText = "No listing text available";
       let rightmoveData = null;
+      let scrapeData = null;
       
       if (rightmoveUrl) {
         try {
           console.log('🕷️ Scraping Rightmove URL:', rightmoveUrl);
           
-          // Simple web scraping to extract property details
-          const scrapeResponse = await fetch('/api/scrape-rightmove-simple', {
+          // Use smart scraper with HTML structure extraction and OpenAI fallback
+          const scrapeResponse = await fetch('/api/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ rightmoveUrl }),
+            body: JSON.stringify({ 
+              rightmoveUrl: rightmoveUrl,
+              nonNegotiables: {},
+              customCriteria: {}
+            }),
           });
           
           if (scrapeResponse.ok) {
-            const scrapeData = await scrapeResponse.json();
+            scrapeData = await scrapeResponse.json();
             console.log('🕷️ Scrape response:', scrapeData);
             
-            if (scrapeData.success && scrapeData.listingText) {
-              listingText = scrapeData.listingText;
-              console.log('✅ Successfully scraped listing text:', listingText.substring(0, 200) + '...');
-              console.log('📊 Scraped property details:', scrapeData.propertyDetails);
+            if (scrapeData.propertyData) {
+              // Extract listing text from the property data for comprehensive analysis
+              listingText = scrapeData.propertyData.description || '';
+              rightmoveData = {
+                address: scrapeData.propertyData.address,
+                price: scrapeData.propertyData.price,
+                bedrooms: scrapeData.propertyData.bedrooms,
+                bathrooms: scrapeData.propertyData.bathrooms,
+                propertyType: scrapeData.propertyData.propertyType,
+                size: scrapeData.propertyData.size,
+                sizeInSqm: scrapeData.propertyData.size,
+                description: scrapeData.propertyData.description,
+                features: scrapeData.propertyData.features,
+                images: scrapeData.propertyData.images,
+                firstSeen: scrapeData.propertyData.dateListedIso,
+                nowUtc: new Date().toISOString(),
+                daysOnMarket: null
+              };
+              console.log('✅ Successfully scraped property data:', rightmoveData);
+              console.log('📊 Scraping method:', scrapeData.scrapingMethod);
+              if (scrapeData.fallbackReason) {
+                console.log('⚠️ Fallback reason:', scrapeData.fallbackReason);
+              }
+              console.log('📝 Listing text extracted:', listingText.substring(0, 100) + '...');
             } else {
               console.error('❌ Scraping failed:', scrapeData.error);
               listingText = "Failed to scrape property details";
@@ -235,29 +285,57 @@ function PropertyPreferencesContent() {
         }
       }
       
+      // Ensure we have listing text for the comprehensive analysis
+      if (!listingText || listingText.trim() === '') {
+        console.log('⚠️ No listing text available, using property details as fallback');
+        listingText = `Property: ${rightmoveData?.address || 'Unknown address'}, Price: £${rightmoveData?.price || 'Unknown'}, ${rightmoveData?.bedrooms || 'Unknown'} bedrooms, ${rightmoveData?.bathrooms || 'Unknown'} bathrooms, ${rightmoveData?.propertyType || 'Unknown type'}`;
+      }
+      
+      console.log('📝 Final listing text for comprehensive analysis:', listingText.substring(0, 200) + '...');
+      
       const analysisResponse = await fetch('/api/comprehensive-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           listingText,
           url: rightmoveUrl,
-          toggles: userPrefs.features, // Pass selected binary features as toggles
-          userPreferences: userPrefs.importance, // Pass importance directly
+          scrapedPropertyData: scrapeData?.propertyData ? {
+            address: scrapeData.propertyData.address,
+            price: scrapeData.propertyData.price,
+            bedrooms: scrapeData.propertyData.bedrooms,
+            bathrooms: scrapeData.propertyData.bathrooms,
+            propertyType: scrapeData.propertyData.propertyType,
+            size: scrapeData.propertyData.size,
+            sizeInSqm: scrapeData.propertyData.size,
+            description: scrapeData.propertyData.description,
+            features: scrapeData.propertyData.features,
+            images: scrapeData.propertyData.images
+          } : null,
+          toggles: {
+            garage: userPrefs.features["Garage"] || false,
+            garden: userPrefs.features["Garden"] || false,
+            parking: userPrefs.features["Parking"] || false,
+            newBuild: userPrefs.features["New build"] || false
+          }, // Convert UI feature names to API format
+          userPreferences: userPrefs, // Pass full user preferences object
           anythingElse: userPrefs.anythingElse,
-          rightmove: rightmoveData || { // Use scraped data or mock data
-            firstSeen: "2024-01-01T00:00:00.000Z",
-            nowUtc: new Date().toISOString()
-          },
-          ppdPostcodeSeries: [], // Placeholder for PPD data
-          ppdPropertyTypeSeries: [], // Placeholder for PPD data
-          ukFallbackSeries: [] // Placeholder for fallback data
+          rightmove: rightmoveData ? {
+            firstSeen: rightmoveData.firstSeen,
+            nowUtc: rightmoveData.nowUtc
+          } : null, // No fallback - use only real data
+          ppdPostcodeSeries: null, // No placeholder data
+          ppdPropertyTypeSeries: null, // No placeholder data
+          ukFallbackSeries: null // No placeholder data
         }),
       });
 
       console.log('Analysis Response status:', analysisResponse.status);
       const analysisData = await analysisResponse.json();
       
+      console.log('🔍 Analysis response data:', JSON.stringify(analysisData, null, 2));
+      
       if (!analysisData.success) {
+        console.error('❌ Analysis failed:', analysisData.error);
         throw new Error(analysisData.error || 'Analysis failed');
       }
 
@@ -265,8 +343,9 @@ function PropertyPreferencesContent() {
       console.log('📊 Analysis result:', analysisData.analysis);
       
       // Store the comprehensive analysis data
-      localStorage.setItem('comprehensiveAnalysis', JSON.stringify(analysisData.analysis));
-      localStorage.setItem('userPreferences', JSON.stringify(analysisData.analysis.userPreferences));
+      localStorage.setItem('comprehensiveAnalysis', JSON.stringify(analysisData));
+      localStorage.setItem('userPreferences', JSON.stringify(userPrefs));
+      localStorage.setItem('rightmoveUrl', rightmoveUrl); // Store the URL for time on market calculation
       
       console.log('💾 Comprehensive analysis data stored in localStorage');
 
@@ -276,13 +355,53 @@ function PropertyPreferencesContent() {
       
     } catch (error) {
       console.error('Analysis failed:', error);
+      
+      // Fallback: Store the scraped data directly if comprehensive analysis fails
+      if (scrapeData?.propertyData) {
+        console.log('🔄 Using fallback: storing scraped data directly');
+        
+        const fallbackAnalysisData = {
+          basicInfo: {
+            propertyAddress: scrapeData.propertyData.address,
+            listingPrice: scrapeData.propertyData.price,
+            area: scrapeData.propertyData.postcode,
+            floorAreaSqm: scrapeData.propertyData.size,
+            numberOfBedrooms: scrapeData.propertyData.bedrooms,
+            numberOfBathrooms: scrapeData.propertyData.bathrooms,
+            propertyType: scrapeData.propertyData.propertyType,
+            description: scrapeData.propertyData.description,
+            listingUrl: rightmoveUrl
+          },
+          binaryFeatures: {
+            garage: null,
+            garden: null,
+            parking: null,
+            newBuild: null
+          },
+          additionalCriteria: null,
+          customPreferences: null,
+          enhancedAnalytics: null,
+          failedAnalysis: [],
+          userPreferences: userPrefs,
+          marketGraphs: null,
+          diagnostics: {
+            confidence: 0.7,
+            missing: ['Comprehensive analysis failed - using basic scraped data'],
+            notes: ['Analysis fell back to basic scraping due to comprehensive analysis failure']
+          }
+        };
+        
+        localStorage.setItem('comprehensiveAnalysis', JSON.stringify(fallbackAnalysisData));
+        localStorage.setItem('userPreferences', JSON.stringify(userPrefs));
+        localStorage.setItem('rightmoveUrl', rightmoveUrl); // Store the URL for time on market calculation
+        console.log('💾 Fallback analysis data stored in localStorage');
+      }
+      
       // Continue to results page even if analysis fails
+      router.push('/results');
     } finally {
       setIsAnalysing(false);
     }
-    
-    // Navigate to results page
-    router.push('/results');
   };
 
   const handleBack = () => {
@@ -293,7 +412,7 @@ function PropertyPreferencesContent() {
     <div className="min-h-screen text-gray-900" style={{backgroundColor: '#368F8B'}}>
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
         {/* Back link */}
-        <button className="text-sm text-white hover:text-gray-200 mb-6 flex items-center gap-2" type="button" onClick={handleBack}>↩ Back to Home Page</button>
+        <button className="text-sm text-white hover:text-gray-200 mb-6 flex items-center gap-2 cursor-pointer" type="button" onClick={handleBack}>↩ Back to Home Page</button>
 
         {/* Header */}
         <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-2">What are you looking for in a property?</h1>
@@ -345,7 +464,7 @@ function PropertyPreferencesContent() {
                 <div>
                   <ToggleGroup
                     label="Bedrooms"
-                    options={["1", "2", "3", "4+"]}
+                    options={["1", "2", "3", "4", "5", "6+"]}
                     value={bedrooms}
                     onChange={setBedrooms}
                   />
@@ -371,7 +490,7 @@ function PropertyPreferencesContent() {
                 <div>
                   <ToggleGroup
                     label="Property type"
-                    options={["Detached", "Semi detached", "Terraced", "Flat"]}
+                    options={["Flat / Apartment", "Bungalow", "Cottage", "Townhouse", "Mews House", "Terraced House", "End of Terrace", "Semi-Detached House", "Detached House", "Converted Property", "Other"]}
                     value={propertyType}
                     onChange={setPropertyType}
                   />
@@ -461,7 +580,7 @@ function PropertyPreferencesContent() {
               <div>
                 <ToggleGroup
                   label=""
-                  options={["50-70 sqm", "71-90 sqm", "91-105 sqm", "105-120 sqm", "120-140 sqm", "140-170 sqm", "170 sqm plus"]}
+                  options={["50-70 sqm", "71-90 sqm", "91-105 sqm", "106-120 sqm", "121-140 sqm", "141-170 sqm", "171+ sqm"]}
                   value={preferredSpace}
                   onChange={setPreferredSpace}
                 />
@@ -475,14 +594,55 @@ function PropertyPreferencesContent() {
 
           {/* Anything Else */}
           <section className="space-y-4">
-            <h2 className="text-lg font-medium">Anything Else</h2>
-            <div className="space-y-2">
-              <textarea
-                value={anythingElse}
-                onChange={(e) => setAnythingElse(e.target.value)}
-                placeholder="Include anything else that you'd like to include within our analysis, preferably stating how important this preference is e.g. I need the house to be within 1km of a church and that to me is of 10/10 importance"
-                className="w-full h-24 rounded-xl border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-300 resize-none"
-              />
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-medium">Anything Else</h2>
+              <div className="group relative">
+                <div className="w-5 h-5 rounded-full border border-gray-400 flex items-center justify-center cursor-help text-xs font-medium text-gray-500 hover:text-gray-700 hover:border-gray-600">
+                  i
+                </div>
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                  Describe any specific requirements (e.g. south-facing garden, near mosque, freehold property) and their importance
+                </div>
+              </div>
+            </div>
+            
+            {anythingElseEntries.map((entry, index) => (
+              <div key={entry.id} className="space-y-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <textarea
+                      value={entry.text}
+                      onChange={(e) => updateAnythingElseEntry(entry.id, e.target.value)}
+                      placeholder="Include anything else that you'd like us to analyse e.g. I want to be local to a church"
+                      className="w-full h-24 rounded-xl border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-300 resize-none"
+                    />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1">
+                      <ImportanceSlider value={entry.importance} onChange={(value) => updateAnythingElseImportance(entry.id, value)} />
+                    </div>
+                    {anythingElseEntries.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeAnythingElseEntry(entry.id)}
+                        className="px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            
+            <div className="flex justify-start">
+              <button
+                type="button"
+                onClick={addAnythingElseEntry}
+                className="px-4 py-2 text-teal-600 hover:text-teal-800 hover:bg-teal-50 rounded-lg border border-teal-200 hover:border-teal-300 transition-colors"
+              >
+                + Add another
+              </button>
             </div>
           </section>
 
@@ -501,7 +661,7 @@ function PropertyPreferencesContent() {
         {/* Footer CTA */}
         <div className="flex items-center justify-between gap-4 mt-6">
           <button
-            className="px-4 py-3 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-100"
+            className="px-4 py-3 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-100 cursor-pointer"
             style={{backgroundColor: '#F3DFC1'}}
             type="button"
             onClick={() => {
@@ -521,13 +681,14 @@ function PropertyPreferencesContent() {
               setSpaceImportance(5);
               setTimeOnMarketImportance(5);
               setAnythingElseImportance(5);
+              setAnythingElseEntries([{ id: '1', text: '', importance: 5 }]);
             }}
           >
             Reset
           </button>
 
           <button
-            className="flex-1 sm:flex-none px-6 py-3 rounded-xl bg-black text-white font-medium hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 sm:flex-none px-6 py-3 rounded-xl bg-black text-white font-medium hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             type="button"
             onClick={handleSubmit}
             disabled={isAnalysing}
