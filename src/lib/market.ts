@@ -5,7 +5,7 @@ const LAND_REGISTRY_API_KEY = process.env.LAND_REGISTRY_API_KEY;
 // Import real Land Registry data parser
 import { getLandRegistryPricePerSqm, getLandRegistryGrowthRate } from './landRegistryData';
 import { enhancedLandRegistry, YearlyTrendData, PricePerSqmData, TimeOnMarketData } from './enhancedLandRegistry';
-
+import { supabaseLandRegistry } from './supabaseLandRegistry';
 // Simple in-memory cache (in production, use Redis or similar)
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
@@ -372,8 +372,7 @@ export async function fetchStreetAveragePrice(streetName: string, propertyType: 
 export async function fetch12MonthAverageSoldPrice(postcode: string, propertyType: string): Promise<number> {
   try {
     console.log(`🔍 fetch12MonthAverageSoldPrice called with postcode="${postcode}", propertyType="${propertyType}"`);
-    const result = await enhancedLandRegistry.get12MonthAverageSoldPrice(postcode, propertyType);
-    console.log(`✅ fetch12MonthAverageSoldPrice result: £${result.toLocaleString()}`);
+    const result = await supabaseLandRegistry.get12MonthAverageSoldPrice(postcode, propertyType);    console.log(`✅ fetch12MonthAverageSoldPrice result: £${result.toLocaleString()}`);
     return result;
   } catch (error) {
     console.error('❌ Error fetching 12-month average sold price:', error);
