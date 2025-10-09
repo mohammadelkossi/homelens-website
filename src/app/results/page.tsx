@@ -2,6 +2,8 @@
 import React from "react";
 import FiveYearTrendChart from "@/components/FiveYearTrendChart";
 import PriceHistoryChart from "@/components/PriceHistoryChart";
+import { HOME_LENS_CONFIG, scoreHomeLens, buildScoreContext } from "@/lib/homelensScoring";
+import { ScoreBadge, ScoreBreakdownList } from "@/components/ScoreBadge";
 
 // ====================== Utilities ======================== //
 const COLORS = {
@@ -56,62 +58,6 @@ const DataNotAvailableSection = React.memo(function DataNotAvailableSection({ mi
 });
 
 // ====================== Visual Parts ===================== //
-const ScoreDial = React.memo(function ScoreDial({ score }) {
-  // Experian-like segmented dial (brand colours), no tick marks
-  const max = 1000;
-  const s = clamp(Number(score) || 0, 0, max);
-  const pct = s / max; // 0..1
-
-  // Dial geometry
-  const cx = 120, cy = 160, r = 105;
-  const startAngle = -180; // left
-  const endAngle = 0;      // right
-  const segs = [
-    { size: 0.2, color: COLORS.navy },
-    { size: 0.2, color: COLORS.tealDark },
-    { size: 0.2, color: COLORS.teal },
-    { size: 0.2, color: COLORS.tan },
-    { size: 0.2, color: COLORS.beige },
-  ];
-
-  // Helpers (plain JS)
-  const polar = (angleDeg) => {
-    const rad = (Math.PI / 180) * angleDeg;
-    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-  };
-  const arcPath = (a0, a1) => {
-    const p0 = polar(a0), p1 = polar(a1);
-    const largeArc = a1 - a0 >= 180 ? 1 : 0;
-    return `M ${p0.x} ${p0.y} A ${r} ${r} 0 ${largeArc} 1 ${p1.x} ${p1.y}`;
-  };
-
-  // Needle angle
-  const angle = startAngle + (endAngle - startAngle) * pct;
-  const needleLen = 70;
-  const needleRad = (Math.PI / 180) * angle;
-  const nx = cx + needleLen * Math.cos(needleRad);
-  const ny = cy + needleLen * Math.sin(needleRad);
-
-  // Build segment arcs
-  let acc = 0;
-  const segPaths = segs.map((seg, i) => {
-    const a0 = startAngle + (endAngle - startAngle) * acc;
-    acc += seg.size;
-    const a1 = startAngle + (endAngle - startAngle) * acc;
-    return <path key={i} d={arcPath(a0, a1)} stroke={seg.color} strokeWidth={16} fill="none"/>;
-  });
-
-  return (
-    <div className="relative w-[220px] h-[150px]">
-      <svg viewBox="0 0 240 140" className="w-full h-full">
-        <g transform={`translate(0,-10)`}>{segPaths}</g>
-      </svg>
-      <div className="absolute left-1/2 top-[94px] -translate-x-1/2 text-center">
-        <div className="text-5xl font-semibold" style={{color: '#246A73'}}>{fmtNum(s)}</div>
-      </div>
-    </div>
-  );
-});
 
 const Stat = React.memo(function Stat({ label, value, helper }) {
   return (
@@ -147,8 +93,8 @@ function metricTone(metric, value, { market, overview }, overrides) {
     case 'yoy': {
       const v = Number(market?.avgPctPriceGrowthPerYear);
       if (!isFinite(v)) return TONE.NEU;
-      if (v > 0.3) return TONE.POS;
-      if (v < -0.3) return TONE.NEG;
+      if (v > 3) return TONE.POS; // Now expects percent (3% not 0.03)
+      if (v < -3) return TONE.NEG;
       return TONE.NEU;
     }
     case 'timeOnMarket': {
@@ -364,18 +310,16 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
         </h1>
         </div>
         <div className="flex gap-2">
-          {overview.listingUrl && (
-            <button
-              onClick={() => {
-                const url = overview.listingUrl || (typeof window !== 'undefined' ? window.location.href : '');
-                if (navigator.share) { navigator.share({ title: 'HomeLens Report', url }).catch(()=>{}); }
-                else if (navigator.clipboard) { navigator.clipboard.writeText(url).catch(()=>{}); }
-              }}
-              className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm hover:bg-gray-50"
-            >
-              Share
-            </button>
-          )}
+          <button
+            onClick={() => {
+              const url = overview.listingUrl || (typeof window !== 'undefined' ? window.location.href : '');
+              if (navigator.share) { navigator.share({ title: 'HomeLens Report', url }).catch(()=>{}); }
+              else if (navigator.clipboard) { navigator.clipboard.writeText(url).catch(()=>{}); }
+            }}
+            className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm hover:bg-gray-50"
+          >
+            Share
+          </button>
           <button
             onClick={() => {
               // Create a new window for printing/PDF generation
@@ -427,9 +371,6 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
           </button>
         </div>
       </div>
-
-      {/* ===== DATA NOT AVAILABLE SECTION ===== */}
-      <DataNotAvailableSection missingDataItems={missingDataItems} />
 
       {/* ===== 1) OVERVIEW ===== */}
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -509,7 +450,7 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
 
           <div className="flex items-center justify-center md:justify-end">
             <div className="text-right">
-              <ScoreDial score={overallScore} />
+              <ScoreBadge score={overallScore} />
             </div>
           </div>
         </div>
@@ -553,18 +494,13 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
               }
             </div>
           </div>
-          <Stat label="Average sold price" value={fmtGBP(market.avgSoldPriceForConfig)} helper={`${overview.bedrooms}-bed ${overview.propertyType}`} />
+          <Stat 
+            label="Average sold price" 
+            value={fmtGBP(aiAnalysis?.enhancedAnalytics?.avgSoldPrice12Months || aiAnalysis?.analysis?.enhancedAnalytics?.avgSoldPrice12Months || 0)} 
+            helper={`${overview.propertyType} in ${aiAnalysis?.analysis?.basicInfo?.propertyAddress?.match(/([A-Z]{1,2}\d{1,2}[A-Z]?)\b/i)?.[1] || 'postcode'} (past 12m)`} 
+          />
         </div>
 
-        {/* Sold price change — lollipop chart */}
-        <div className="mt-6">
-          <h4 className="text-sm font-semibold mb-3" style={{fontSize: '0.7rem'}}>
-            Average sold house prices in {postcode} for {propertyType}
-          </h4>
-          <SoldChangeChart data={market.avgPriceChangeSoldByPeriod} />
-        </div>
-
-        {/* 5-Year Price Trend Chart */}
         {aiAnalysis?.analysis?.enhancedAnalytics?.fiveYearTrend && aiAnalysis.analysis.enhancedAnalytics.fiveYearTrend.length > 0 && (
           <div className="mt-6">
             <FiveYearTrendChart 
@@ -654,6 +590,15 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
               <div className="mt-1 text-sm text-gray-500">to £{landRegistryData.data.statistics.maxPrice.toLocaleString()}</div>
             </div>
           </div>
+
+          {/* 5-Year Price Trend Chart */}
+          {landRegistryData.data.trendData && landRegistryData.data.trendData.length > 0 && (
+            <FiveYearTrendChart 
+              data={landRegistryData.data.trendData}
+              postcode={landRegistryData.data.postcode}
+              propertyType={overview.propertyType || "Semi-detached houses"}
+            />
+          )}
 
           {/* Recent Sales */}
           {landRegistryData.data.properties && landRegistryData.data.properties.length > 0 && (
@@ -811,126 +756,212 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
       </section>
 
       {/* ===== 5) LOCAL AMENITIES ===== */}
-      {data.locality && (
+      {data.localityData && (
         <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="mb-4">
             <h3 className="text-lg font-semibold">Local Amenities</h3>
-            <div className="text-sm text-gray-500">Nearby facilities and services</div>
+            <div className="text-sm text-gray-500">Nearby facilities and services powered by Google Maps</div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {/* Parks */}
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                  <span className="text-green-600 text-sm">🌳</span>
+                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                  <span className="text-xl">🏞️</span>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-gray-900">Parks & Green Spaces</h4>
-                  <div className="text-xs text-gray-500">Recreation & Nature</div>
+                  <h4 className="font-semibold text-gray-900">Parks</h4>
+                  <div className="text-xs text-gray-500">{data.localityData.parks.length} found</div>
                 </div>
               </div>
-              <div className="text-sm text-gray-700">
-                {data.locality.breakdown?.parks?.description || 'No parks found nearby'}
+              <div className="space-y-2">
+                {data.localityData.parks.length > 0 ? (
+                  data.localityData.parks.slice(0, 3).map((park, idx) => (
+                    <div key={idx} className="text-sm">
+                      <div className="font-medium text-gray-800">{park.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {park.distance ? `${Math.round(park.distance)}m away` : park.vicinity}
+                      </div>
+                      {park.rating && (
+                        <div className="text-xs text-yellow-600">⭐ {park.rating}/5</div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-gray-500">No parks found nearby</div>
+                )}
               </div>
             </div>
 
             {/* Schools */}
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                  <span className="text-blue-600 text-sm">🏫</span>
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                  <span className="text-xl">🏫</span>
                 </div>
                 <div>
                   <h4 className="font-semibold text-gray-900">Schools</h4>
-                  <div className="text-xs text-gray-500">Education & Learning</div>
+                  <div className="text-xs text-gray-500">{data.localityData.schools.length} found</div>
                 </div>
               </div>
-              <div className="text-sm text-gray-700">
-                {data.locality.breakdown?.schools?.description || 'No schools found nearby'}
+              <div className="space-y-2">
+                {data.localityData.schools.length > 0 ? (
+                  data.localityData.schools.slice(0, 3).map((school, idx) => (
+                    <div key={idx} className="text-sm">
+                      <div className="font-medium text-gray-800">{school.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {school.distance ? `${Math.round(school.distance)}m away` : school.vicinity}
+                      </div>
+                      {school.rating && (
+                        <div className="text-xs text-yellow-600">⭐ {school.rating}/5</div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-gray-500">No schools found nearby</div>
+                )}
               </div>
             </div>
 
             {/* Transport */}
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
-                  <span className="text-purple-600 text-sm">🚂</span>
+                <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                  <span className="text-xl">🚂</span>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-gray-900">Transport Links</h4>
-                  <div className="text-xs text-gray-500">Commuting & Travel</div>
+                  <h4 className="font-semibold text-gray-900">Train Stations</h4>
+                  <div className="text-xs text-gray-500">{data.localityData.trainStations.length} found</div>
                 </div>
               </div>
-              <div className="text-sm text-gray-700">
-                {data.locality.breakdown?.trainStations?.description || 'No train stations found nearby'}
+              <div className="space-y-2">
+                {data.localityData.trainStations.length > 0 ? (
+                  data.localityData.trainStations.slice(0, 3).map((station, idx) => (
+                    <div key={idx} className="text-sm">
+                      <div className="font-medium text-gray-800">{station.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {station.distance ? `${Math.round(station.distance)}m away` : station.vicinity}
+                      </div>
+                      {station.rating && (
+                        <div className="text-xs text-yellow-600">⭐ {station.rating}/5</div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-gray-500">No train stations found nearby</div>
+                )}
               </div>
             </div>
 
             {/* Shopping */}
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
-                  <span className="text-orange-600 text-sm">🛒</span>
+                <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+                  <span className="text-xl">🛒</span>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-gray-900">Shopping</h4>
-                  <div className="text-xs text-gray-500">Retail & Essentials</div>
+                  <h4 className="font-semibold text-gray-900">Supermarkets</h4>
+                  <div className="text-xs text-gray-500">{data.localityData.supermarkets.length} found</div>
                 </div>
               </div>
-              <div className="text-sm text-gray-700">
-                {data.locality.breakdown?.supermarkets?.description || 'No supermarkets found nearby'}
+              <div className="space-y-2">
+                {data.localityData.supermarkets.length > 0 ? (
+                  data.localityData.supermarkets.slice(0, 3).map((market, idx) => (
+                    <div key={idx} className="text-sm">
+                      <div className="font-medium text-gray-800">{market.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {market.distance ? `${Math.round(market.distance)}m away` : market.vicinity}
+                      </div>
+                      {market.rating && (
+                        <div className="text-xs text-yellow-600">⭐ {market.rating}/5</div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-gray-500">No supermarkets found nearby</div>
+                )}
               </div>
             </div>
 
             {/* Healthcare */}
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
-                  <span className="text-red-600 text-sm">🏥</span>
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <span className="text-xl">🏥</span>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-gray-900">Healthcare</h4>
-                  <div className="text-xs text-gray-500">Medical Services</div>
+                  <h4 className="font-semibold text-gray-900">Hospitals</h4>
+                  <div className="text-xs text-gray-500">{data.localityData.hospitals.length} found</div>
                 </div>
               </div>
-              <div className="text-sm text-gray-700">
-                {data.locality.breakdown?.hospitals?.description || 'No hospitals found nearby'}
+              <div className="space-y-2">
+                {data.localityData.hospitals.length > 0 ? (
+                  data.localityData.hospitals.slice(0, 3).map((hospital, idx) => (
+                    <div key={idx} className="text-sm">
+                      <div className="font-medium text-gray-800">{hospital.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {hospital.distance ? `${Math.round(hospital.distance)}m away` : hospital.vicinity}
+                      </div>
+                      {hospital.rating && (
+                        <div className="text-xs text-yellow-600">⭐ {hospital.rating}/5</div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-gray-500">No hospitals found nearby</div>
+                )}
               </div>
             </div>
 
             {/* Fuel */}
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center">
-                  <span className="text-yellow-600 text-sm">⛽</span>
+                <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center">
+                  <span className="text-xl">⛽</span>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-gray-900">Fuel Stations</h4>
-                  <div className="text-xs text-gray-500">Petrol & Convenience</div>
+                  <h4 className="font-semibold text-gray-900">Petrol Stations</h4>
+                  <div className="text-xs text-gray-500">{data.localityData.petrolStations.length} found</div>
                 </div>
               </div>
-              <div className="text-sm text-gray-700">
-                {data.locality.breakdown?.petrolStations?.description || 'No petrol stations found nearby'}
+              <div className="space-y-2">
+                {data.localityData.petrolStations.length > 0 ? (
+                  data.localityData.petrolStations.slice(0, 3).map((station, idx) => (
+                    <div key={idx} className="text-sm">
+                      <div className="font-medium text-gray-800">{station.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {station.distance ? `${Math.round(station.distance)}m away` : station.vicinity}
+                      </div>
+                      {station.rating && (
+                        <div className="text-xs text-yellow-600">⭐ {station.rating}/5</div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-gray-500">No petrol stations found nearby</div>
+                )}
               </div>
             </div>
           </div>
 
           {/* Overall Locality Score */}
-          <div className="mt-6 p-4 bg-gray-50 rounded-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-semibold text-gray-900">Overall Locality Score</h4>
-                <div className="text-sm text-gray-500">Combined amenity accessibility</div>
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold" style={{color: COLORS.tealDark}}>
-                  {data.locality.score}/100
+          {data.locality && (
+            <div className="mt-6 p-4 bg-gradient-to-r from-teal-50 to-green-50 rounded-xl border border-teal-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-semibold text-gray-900">Overall Locality Score</h4>
+                  <div className="text-sm text-gray-600">Combined accessibility of all amenities</div>
                 </div>
-                <div className="text-xs text-gray-500">out of 100</div>
+                <div className="text-right">
+                  <div className="text-3xl font-bold" style={{color: COLORS.tealDark}}>
+                    {data.locality.score}/100
+                  </div>
+                  <div className="text-xs text-gray-500">Excellent location</div>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </section>
       )}
 
@@ -962,6 +993,11 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
         </section>
       )}
 
+      {/* ===== DATA NOT AVAILABLE SECTION ===== */}
+      <div className="mt-6">
+        <DataNotAvailableSection missingDataItems={missingDataItems} />
+      </div>
+
       {/* ===== 5) SUMMARY / RECOMMENDATIONS ===== */}
       <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
@@ -972,13 +1008,18 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
             <div key={idx} className="rounded-2xl border border-gray-200 p-4">
               <div className="text-sm font-semibold">{block.title}</div>
               <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-gray-700">
-                {block.items.map((it, i) => (
-                  <li key={i}>{it}</li>
-                ))}
+                {block.items && block.items.length > 0 ? (
+                  block.items.map((it, i) => (
+                    <li key={i}>{it}</li>
+                  ))
+                ) : (
+                  <li className="text-gray-400 italic">No data available</li>
+                )}
               </ul>
             </div>
           ))}
         </div>
+        {console.log('🔍 Summary data being rendered:', summary)}
       </section>
 
       <p className="mt-6 text-center text-xs text-gray-500">
@@ -1063,16 +1104,16 @@ export function __runHomeLensTests() {
   console.assert(periods && typeof periods === 'object' && ['1m','3m','6m','1y'].every(k=>k in periods), 'avgPriceChangeSoldByPeriod has required keys');
 
   // --- extra tone tests ---
-  const sample = { market: { avgPricePerSqmPostcodeSold: 4000, pricePerSqm: 3800, avgPctPriceGrowthPerYear: 0.6, timeOnMarketDays: 15, timeOnMarketPercentile: 30, roadSalesLastYear: 3, onMarketCountForConfig: 3 }, overview: {} };
+  const sample = { market: { avgPricePerSqmPostcodeSold: 4000, pricePerSqm: 3800, avgPctPriceGrowthPerYear: 6, timeOnMarketDays: 15, timeOnMarketPercentile: 30, roadSalesLastYear: 3, onMarketCountForConfig: 3 }, overview: {} };
   console.assert(metricTone('pricePerSqm', null, sample) === TONE.POS, 'pricePerSqm should be POS when below sold avg');
-  console.assert(metricTone('yoy', null, sample) === TONE.POS, 'yoy > 0.3 should be POS');
+  console.assert(metricTone('yoy', null, sample) === TONE.POS, 'yoy > 3 should be POS');
   console.assert(metricTone('timeOnMarket', null, sample) === TONE.POS, 'low percentile DOM should be POS');
   console.assert(metricTone('roadSales', null, sample) === TONE.POS, '>=3 road sales POS');
   console.assert(metricTone('onMarketCount', null, sample) === TONE.POS, '>=3 on-market POS');
 
-  const sampleNeg = { market: { avgPricePerSqmPostcodeSold: 4000, pricePerSqm: 4200, avgPctPriceGrowthPerYear: -0.6, timeOnMarketDays: 60, roadSalesLastYear: 0, onMarketCountForConfig: 0 }, overview: {} };
+  const sampleNeg = { market: { avgPricePerSqmPostcodeSold: 4000, pricePerSqm: 4200, avgPctPriceGrowthPerYear: -6, timeOnMarketDays: 60, roadSalesLastYear: 0, onMarketCountForConfig: 0 }, overview: {} };
   console.assert(metricTone('pricePerSqm', null, sampleNeg) === TONE.NEG, 'pricePerSqm above sold avg should be NEG');
-  console.assert(metricTone('yoy', null, sampleNeg) === TONE.NEG, 'yoy < -0.3 should be NEG');
+  console.assert(metricTone('yoy', null, sampleNeg) === TONE.NEG, 'yoy < -3 should be NEG');
   console.assert([TONE.NEG, TONE.NEU].includes(metricTone('timeOnMarket', null, sampleNeg)), 'long DOM should not be POS');
   console.assert(metricTone('roadSales', null, sampleNeg) === TONE.NEG, '0 road sales NEG');
   console.assert(metricTone('onMarketCount', null, sampleNeg) === TONE.NEG, '0 on-market NEG');
@@ -1178,10 +1219,21 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
           streetSalesCount: count,
           streetAveragePrice: street.streetAveragePrice || 0,
           pricePerSqm: street.pricePerSqm || { averagePricePerSqm: 0, salesCount: 0, totalProperties: 0 },
-          fiveYearTrend: street.fiveYearTrend || []
+          fiveYearTrend: street.fiveYearTrend || [],
+          avgSoldPrice12Months: raw.analysis.enhancedAnalytics?.avgSoldPrice12Months || 0,
+          localityData: raw.analysis.enhancedAnalytics?.localityData || raw.analysis.localityData || null
         };
         
+        // Preserve aiSummary if it exists
+        if (raw.analysis.aiSummary) {
+          console.log('📝 AI Summary found in stored data:', raw.analysis.aiSummary);
+        } else {
+          console.log('⚠️  No AI Summary in stored data - run fresh analysis to get AI recommendations');
+        }
+        
         console.log('📊 Normalized analysis data:', raw.analysis.enhancedAnalytics);
+        console.log('📊 avgSoldPrice12Months after normalization:', raw.analysis.enhancedAnalytics?.avgSoldPrice12Months);
+        console.log('📊 localityData after normalization:', raw.analysis.enhancedAnalytics?.localityData);
         console.log('📊 Final basicInfo.listingPrice:', raw.analysis.basicInfo.listingPrice);
         setAiAnalysis(raw);
         
@@ -1229,7 +1281,7 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
             if (firstSalePrice > 0 && currentPrice > 0 && years > 0) {
               // CAGR formula: (Ending Value / Beginning Value)^(1/Years) - 1
               const cagr = Math.pow(currentPrice / firstSalePrice, 1 / years) - 1;
-              avgAnnualGrowth = cagr; // Store as decimal (e.g., 0.075 for 7.5%)
+              avgAnnualGrowth = cagr * 100; // Store as percent (e.g., 7.5 for 7.5%)
             }
           }
           
@@ -1433,7 +1485,7 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
               currentPrice: currentPrice.toString(),
               saleHistory: data.priceHistory,
               hasHistory: true,
-              avgAnnualGrowth: cagr
+              avgAnnualGrowth: cagr * 100 // Store as percent
             });
           }
         } else {
@@ -1514,7 +1566,7 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
           currentPrice: aiAnalysis.basicInfo.listingPrice,
           saleHistory: priceHistory,
           hasHistory: true,
-          avgAnnualGrowth: cagr
+          avgAnnualGrowth: cagr * 100 // Store as percent
         });
       } else {
         console.log('❌ CAGR calculation skipped:', { firstSalePrice, currentPrice, years });
@@ -1537,6 +1589,8 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
     
     console.log('🔍 Generating custom criteria from comprehensive analysis:', aiAnalysis);
     console.log('🔍 User preferences structure:', userPreferences);
+    console.log('🔍 basicInfo from aiAnalysis.analysis:', aiAnalysis.analysis?.basicInfo);
+    console.log('🔍 basicInfo from aiAnalysis:', aiAnalysis.basicInfo);
     const criteria = [];
     
     // 1. Distance to preferred postcode - now handled by Google Maps analysis in comprehensive analysis
@@ -1545,7 +1599,7 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
     // 2. Size - only show if user provided preferred space
     if (userPreferences.preferredSpace) {
       const importance = userPreferences.spaceImportance / 10;
-      const propertySize = aiAnalysis.basicInfo?.floorAreaSqm;
+      const propertySize = aiAnalysis.analysis?.basicInfo?.floorAreaSqm || aiAnalysis.basicInfo?.floorAreaSqm;
       let matchScore = 0;
       let valueText = 'Unknown';
       
@@ -1605,7 +1659,7 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
     if (userPreferences.bedrooms) {
       const importance = userPreferences.bedroomsImportance / 10;
       const userBedrooms = parseInt(userPreferences.bedrooms);
-      const propertyBedrooms = aiAnalysis.basicInfo?.numberOfBedrooms;
+      const propertyBedrooms = aiAnalysis.analysis?.basicInfo?.numberOfBedrooms || aiAnalysis.basicInfo?.numberOfBedrooms;
       let matchScore = 0;
       let valueText = 'Unknown';
       
@@ -1639,7 +1693,7 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
     if (userPreferences.bathrooms) {
       const importance = userPreferences.bathroomsImportance / 10;
       const userBathrooms = parseInt(userPreferences.bathrooms);
-      const propertyBathrooms = aiAnalysis.basicInfo?.numberOfBathrooms;
+      const propertyBathrooms = aiAnalysis.analysis?.basicInfo?.numberOfBathrooms || aiAnalysis.basicInfo?.numberOfBathrooms;
       let matchScore = 0;
       let valueText = 'Unknown';
       
@@ -1673,12 +1727,12 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
     if (userPreferences.propertyType) {
       const importance = userPreferences.propertyTypeImportance / 10;
       const userPropertyType = userPreferences.propertyType.toLowerCase();
-      const propertyType = aiAnalysis.basicInfo?.propertyType?.toLowerCase();
+      const propertyType = (aiAnalysis.analysis?.basicInfo?.propertyType || aiAnalysis.basicInfo?.propertyType)?.toLowerCase();
       let matchScore = 0;
       let valueText = 'Unknown';
       
       if (propertyType) {
-        valueText = aiAnalysis.basicInfo?.propertyType || 'Unknown';
+        valueText = aiAnalysis.analysis?.basicInfo?.propertyType || aiAnalysis.basicInfo?.propertyType || 'Unknown';
         
         // Exact match
         if (userPropertyType === propertyType) {
@@ -1767,8 +1821,9 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
     }
     
     // 6+. Additional criteria from "Anything Else" analysis
-    if (aiAnalysis.additionalCriteria && aiAnalysis.additionalCriteria.length > 0) {
-      aiAnalysis.additionalCriteria.forEach((additionalCriterion, index) => {
+    const additionalCriteria = aiAnalysis.analysis?.additionalCriteria || aiAnalysis.additionalCriteria || [];
+    if (additionalCriteria.length > 0) {
+      additionalCriteria.forEach((additionalCriterion, index) => {
         criteria.push({
           label: additionalCriterion.label,
           importance: 0.5, // Default importance for additional criteria
@@ -1781,8 +1836,9 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
     }
     
     // 7+. Custom preferences from AI analysis (continuous and location, binary goes to Fundamentals)
-    if (aiAnalysis.customPreferences && aiAnalysis.customPreferences.length > 0) {
-      aiAnalysis.customPreferences.forEach((customPreference, index) => {
+    const customPreferences = aiAnalysis.analysis?.customPreferences || aiAnalysis.customPreferences || [];
+    if (customPreferences.length > 0) {
+      customPreferences.forEach((customPreference, index) => {
         // Include continuous and location preferences in Custom Criteria
         if (customPreference.type === 'continuous' || customPreference.type === 'location') {
           // Determine value text based on type and match score
@@ -1838,7 +1894,8 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
 
   // Generate binary criteria for Fundamentals section
   const generateBinaryCriteria = React.useMemo(() => {
-    if (!aiAnalysis || !aiAnalysis.binaryFeatures) {
+    const binaryFeatures = aiAnalysis?.analysis?.binaryFeatures || aiAnalysis?.binaryFeatures;
+    if (!aiAnalysis || !binaryFeatures) {
       return { met: [], notMet: [] };
     }
     
@@ -1846,7 +1903,7 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
     const notMet = [];
     
     // Check each binary feature
-    Object.entries(aiAnalysis.binaryFeatures).forEach(([key, value]) => {
+    Object.entries(binaryFeatures).forEach(([key, value]) => {
       const label = key.charAt(0).toUpperCase() + key.slice(1);
       
       // Get importance from user preferences if available
@@ -1936,6 +1993,42 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
     // Update binary criteria for Fundamentals section
     data.binaryCriteria = generateBinaryCriteria;
     
+    // Update summary with AI-generated insights
+    if (aiAnalysis?.analysis?.aiSummary) {
+      data.summary = [
+        { 
+          title: "Positives", 
+          items: aiAnalysis.analysis.aiSummary.positives || []
+        },
+        { 
+          title: "Things to consider", 
+          items: aiAnalysis.analysis.aiSummary.considerations || []
+        },
+        { 
+          title: "Overall", 
+          items: aiAnalysis.analysis.aiSummary.overall || []
+        }
+      ];
+      console.log('📝 AI Summary loaded:', aiAnalysis.analysis.aiSummary);
+    } else {
+      // Show a message to run fresh analysis
+      data.summary = [
+        { 
+          title: "Positives", 
+          items: ["Run a fresh analysis to see AI-generated insights"]
+        },
+        { 
+          title: "Things to consider", 
+          items: ["Click 'Clear Cache & Start Fresh Analysis' below to get AI recommendations"]
+        },
+        { 
+          title: "Overall", 
+          items: ["AI-powered summary available with fresh analysis"]
+        }
+      ];
+      console.log('⚠️  No AI Summary - showing placeholder message');
+    }
+    
     // Update with real property data if available
     if (propertyData) {
       data.overview = {
@@ -1979,23 +2072,74 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
         }
       }
       
-      data.summary = [
-        {
-          title: "Positives",
-          items: Array.isArray(aiAnalysis.positives) ? aiAnalysis.positives : ["No positive points available"]
-        },
-        {
-          title: "Things to consider", 
-          items: Array.isArray(aiAnalysis.thingsToConsider) ? aiAnalysis.thingsToConsider : ["No considerations available"]
-        },
-        {
-          title: "Overall",
-          items: Array.isArray(aiAnalysis.overall) ? aiAnalysis.overall : (aiAnalysis.overall ? [aiAnalysis.overall] : ["No overall assessment available"])
-        }
-      ];
+      // OLD CODE - REMOVED: This was overriding the AI summary
+      // data.summary = [
+      //   {
+      //     title: "Positives",
+      //     items: Array.isArray(aiAnalysis.positives) ? aiAnalysis.positives : ["No positive points available"]
+      //   },
+      //   {
+      //     title: "Things to consider", 
+      //     items: Array.isArray(aiAnalysis.thingsToConsider) ? aiAnalysis.thingsToConsider : ["No considerations available"]
+      //   },
+      //   {
+      //     title: "Overall",
+      //     items: Array.isArray(aiAnalysis.overall) ? aiAnalysis.overall : (aiAnalysis.overall ? [aiAnalysis.overall] : ["No overall assessment available"])
+      //   }
+      // ];
+      
+      // Add locality data if available
+      if (aiAnalysis.analysis?.enhancedAnalytics?.localityData) {
+        data.localityData = aiAnalysis.analysis.enhancedAnalytics.localityData;
+        console.log('🌍 Locality data added to results:', aiAnalysis.analysis.enhancedAnalytics.localityData);
+      } else if (aiAnalysis.analysis?.localityData) {
+        data.localityData = aiAnalysis.analysis.localityData;
+        console.log('🌍 Locality data added to results (fallback):', aiAnalysis.analysis.localityData);
+      } else if (aiAnalysis.localityData) {
+        data.localityData = aiAnalysis.localityData;
+        console.log('🌍 Locality data added to results (direct):', aiAnalysis.localityData);
+      }
     }
     
-    // Update with real scores
+    // Calculate HomeLens Score
+    if (aiAnalysis?.analysis?.basicInfo) {
+      try {
+        const ctx = buildScoreContext({
+          listingPrice: aiAnalysis.analysis.basicInfo.listingPrice,
+          floorAreaSqm: aiAnalysis.analysis.basicInfo.floorAreaSqm,
+          localAvgPPSqm: aiAnalysis.analysis.enhancedAnalytics?.pricePerSqm?.averagePricePerSqm,
+          areaYoYGrowth: 0.03, // Default 3% growth assumption
+          areaAvgYield: 0.045, // Default 4.5% yield assumption
+          subjectDOM: 35, // From our analysis - 35 days on market
+          postcodeMedianDOM: 60, // Typical median
+          streetSalesPast24m: aiAnalysis.analysis.enhancedAnalytics?.streetSalesCount || 2,
+          subjectType: aiAnalysis.analysis.basicInfo.propertyType,
+          beds: aiAnalysis.analysis.basicInfo.numberOfBedrooms,
+          baths: aiAnalysis.analysis.basicInfo.numberOfBathrooms,
+          prefBeds: 3, // Default user preference
+          prefBaths: 2, // Default user preference
+          prefSqm: aiAnalysis.analysis.basicInfo.floorAreaSqm, // Match property size
+          travelMinutes: 20, // Default commute time
+          subjectFeatures: [], // No feature data available
+          prefFeaturesRequired: [],
+          prefFeaturesNice: []
+        });
+
+        const scored = scoreHomeLens(HOME_LENS_CONFIG, ctx);
+        data.overallScore = scored.score_0_999;
+        console.log('🏆 HomeLens Score calculated:', scored.score_0_999);
+        console.log('📊 Score breakdown:', {
+          financial: scored.financial_raw_0_100,
+          preferences: scored.preferences_raw_0_100,
+          blended: scored.blended_raw_0_100
+        });
+      } catch (error) {
+        console.error('❌ Error calculating HomeLens score:', error);
+        data.overallScore = 0;
+      }
+    }
+    
+    // Update with real scores (fallback)
     if (scoreData) {
       data.overview = {
         ...data.overview,
@@ -2008,7 +2152,7 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
       propertyHistory,
       hasHistory: propertyHistory?.hasHistory,
       avgAnnualGrowth: propertyHistory?.avgAnnualGrowth,
-      growthPercentage: propertyHistory?.avgAnnualGrowth ? (propertyHistory.avgAnnualGrowth * 100).toFixed(2) + '%' : 'N/A'
+      growthPercentage: propertyHistory?.avgAnnualGrowth ? propertyHistory.avgAnnualGrowth.toFixed(2) + '%' : 'N/A'
     });
     
     if (propertyHistory && propertyHistory.hasHistory && propertyHistory.avgAnnualGrowth) {
@@ -2095,16 +2239,16 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
   return (
     <div>
       {/* Debug panel */}
-      <div className="fixed top-4 right-4 bg-white p-4 rounded-lg shadow-lg border z-50 max-w-sm">
-        <h3 className="font-bold mb-2">🔧 Debug Panel</h3>
-        <div className="space-y-2 text-xs">
+      <div className="fixed bottom-4 right-4 bg-white p-1 rounded shadow-lg border z-50 max-w-48">
+        <h3 className="font-bold mb-1 text-xs">🔧 Debug</h3>
+        <div className="space-y-0.5 text-xs">
           <div>Price History: {priceHistory ? `${priceHistory.length} items` : 'None'}</div>
           <div>Current Price: {aiAnalysis?.analysis?.basicInfo?.listingPrice || aiAnalysis?.basicInfo?.listingPrice || 'None'}</div>
           <div>aiAnalysis exists: {aiAnalysis ? 'Yes' : 'No'}</div>
           <div>basicInfo exists: {aiAnalysis?.analysis?.basicInfo ? 'Yes' : 'No'}</div>
           <div>listingPrice field: {aiAnalysis?.analysis?.basicInfo?.listingPrice || aiAnalysis?.basicInfo?.listingPrice || 'undefined'}</div>
           <div>Property History: {propertyHistory?.hasHistory ? 'Yes' : 'No'}</div>
-          <div>Avg Growth: {propertyHistory?.avgAnnualGrowth ? `${(propertyHistory.avgAnnualGrowth * 100).toFixed(2)}%` : 'None'}</div>
+          <div>Avg Growth: {propertyHistory?.avgAnnualGrowth ? `${propertyHistory.avgAnnualGrowth.toFixed(2)}%` : 'None'}</div>
           <div>Data Structure: {aiAnalysis?.analysis ? 'analysis.basicInfo' : 'basicInfo'}</div>
         </div>
         <button 
@@ -2143,7 +2287,7 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
                     currentPrice: '450000',
                     saleHistory: data.priceHistory,
                     hasHistory: true,
-                    avgAnnualGrowth: cagr
+                    avgAnnualGrowth: cagr * 100 // Store as percent
                   });
                   console.log('🔍 Manual debug: Property history updated with real CAGR');
                 }
@@ -2158,6 +2302,21 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
           className="mt-2 px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
         >
           🔍 Use Apify to Scrape Real Price History
+        </button>
+        
+        <button 
+          onClick={() => {
+            console.log('🔄 Clearing localStorage and redirecting to home...');
+            localStorage.removeItem('comprehensiveAnalysis');
+            localStorage.removeItem('userPreferences');
+            localStorage.removeItem('rightmoveUrl');
+            console.log('✅ Cache cleared! Redirecting...');
+            alert('Cache cleared! You will be redirected to start a fresh analysis.');
+            window.location.href = '/preferences-redesign';
+          }}
+          className="mt-2 px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600"
+        >
+          🔄 Clear Cache & Start Fresh Analysis
         </button>
         
         <button 
@@ -2190,7 +2349,7 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
               currentPrice: '450000',
               saleHistory: hardcodedPriceHistory,
               hasHistory: true,
-              avgAnnualGrowth: cagr
+              avgAnnualGrowth: cagr * 100 // Store as percent
             });
             
             console.log('🔧 Manual debug: CAGR calculated and set:', (cagr * 100).toFixed(2) + '%');

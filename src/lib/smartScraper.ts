@@ -242,11 +242,59 @@ async function extractFromHTMLStructure(url: string): Promise<ScrapedPropertyDat
       }
     }
     
-    // Extract description
+    // Extract description - try multiple methods
     let description = '';
+    
+    // Method 1: Try meta description
     const metaDesc = $('meta[name="description"]').attr('content') || '';
-    if (metaDesc && !metaDesc.includes('Rightmove')) {
+    if (metaDesc && metaDesc.length > 50 && !metaDesc.includes('Rightmove')) {
       description = metaDesc;
+    }
+    
+    // Method 2: Try to find property description in common Rightmove selectors
+    if (!description) {
+      const descSelectors = [
+        '.property-description',
+        '#propertyDescriptionSection',
+        '[data-test="property-description"]',
+        '.description',
+        'article p'
+      ];
+      
+      for (const selector of descSelectors) {
+        const descText = $(selector).text().trim();
+        if (descText && descText.length > 100) {
+          description = descText;
+          break;
+        }
+      }
+    }
+    
+    // Method 3: Extract from page text - look for substantial paragraphs
+    if (!description) {
+      const pageText = $('body').text();
+      // Look for the main property description - usually between price and features
+      const descMatch = pageText.match(/Guide Price.{0,50}?((?:[A-Z][^.!?]*[.!?]\s*){3,})/s);
+      if (descMatch && descMatch[1].length > 100) {
+        description = descMatch[1].trim();
+      }
+    }
+    
+    // Method 4: Fallback - collect all substantial text content
+    if (!description || description.length < 100) {
+      const bodyText = $('body').text();
+      // Remove navigation, header, footer text
+      const cleanedText = bodyText
+        .replace(/Sign in.*?My Rightmove/gs, '')
+        .replace(/Buy.*?Overseas/gs, '')
+        .replace(/Property for sale.*?Mortgage guides/gs, '')
+        .trim();
+      
+      // Take a reasonable chunk of text that looks like a description
+      const textChunks = cleanedText.split(/\n+/).filter(chunk => chunk.length > 50 && chunk.length < 1000);
+      if (textChunks.length > 0) {
+        description = textChunks.slice(0, 3).join(' ').trim();
+      }
     }
     
     // Extract images

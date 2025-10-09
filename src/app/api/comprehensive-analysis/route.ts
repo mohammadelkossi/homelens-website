@@ -4,9 +4,11 @@ import {
   fetchFiveYearTrend, 
   fetchStreetSalesCount, 
   fetchStreetAveragePrice, 
-  fetchEnhancedPricePerSqm
+  fetchEnhancedPricePerSqm,
+  fetch12MonthAverageSoldPrice
 } from '@/lib/market';
 import { smartScrapeProperty } from '@/lib/smartScraper';
+import { fetchLocalityData, geocodeAddress } from '@/lib/places';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -162,7 +164,9 @@ export async function POST(request: NextRequest) {
         numberOfBathrooms: scrapedPropertyData.bathrooms || null,
         propertyType: scrapedPropertyData.propertyType || null,
         propertySaleHistory: null,
-        listingUrl: url || null
+        listingUrl: url || null,
+        coordinates: scrapedPropertyData.coordinates || null,
+        address: scrapedPropertyData.address || null
       };
       console.log('📊 Using scraped data:', basicInfo);
     } else {
@@ -254,7 +258,8 @@ Guidelines:
       fiveYearTrend: [],
       streetSalesCount: 0,
       streetAveragePrice: 0,
-      pricePerSqm: { averagePricePerSqm: 0, salesCount: 0, totalProperties: 0 }
+      pricePerSqm: { averagePricePerSqm: 0, salesCount: 0, totalProperties: 0 },
+      avgSoldPrice12Months: 0
     };
 
     if (basicInfo.propertyAddress && basicInfo.propertyType) {
@@ -282,7 +287,32 @@ Guidelines:
           console.log(`🔍 About to call fetchFiveYearTrend with postcode="${postcode}", propertyType="${basicInfo.propertyType}"`);
           console.log(`🔍 About to call fetchEnhancedPricePerSqm with postcode="${postcode}", propertyType="${basicInfo.propertyType}"`);
           
-          const [fiveYearTrend, pricePerSqm] = await Promise.all([
+          // Fetch all enhanced analytics in parallel
+          // Get coordinates for locality analysis
+          let coordinates = basicInfo.coordinates;
+          console.log('🔍 DEBUG: basicInfo.coordinates:', coordinates);
+          console.log('🔍 DEBUG: basicInfo.address:', basicInfo.address);
+          console.log('🔍 DEBUG: basicInfo.propertyAddress:', basicInfo.propertyAddress);
+          
+          if (!coordinates && basicInfo.address) {
+            console.log('🌍 Geocoding address for locality analysis...');
+            coordinates = await geocodeAddress(basicInfo.address).catch(error => {
+              console.error('❌ Geocoding error:', error);
+              return null;
+            });
+            console.log('🔍 DEBUG: Geocoded coordinates:', coordinates);
+          } else if (!coordinates && basicInfo.propertyAddress) {
+            console.log('🌍 Geocoding propertyAddress for locality analysis...');
+            coordinates = await geocodeAddress(basicInfo.propertyAddress).catch(error => {
+              console.error('❌ Geocoding error:', error);
+              return null;
+            });
+            console.log('🔍 DEBUG: Geocoded coordinates from propertyAddress:', coordinates);
+          }
+          
+          console.log('🔍 DEBUG: Final coordinates for locality:', coordinates);
+
+          const analyticsPromises = [
             fetchFiveYearTrend(postcode, basicInfo.propertyType).catch(error => {
               console.error('❌ fetchFiveYearTrend error:', error);
               return [];
@@ -290,14 +320,66 @@ Guidelines:
             fetchEnhancedPricePerSqm(postcode, basicInfo.propertyType).catch(error => {
               console.error('❌ fetchEnhancedPricePerSqm error:', error);
               return { averagePricePerSqm: 0, salesCount: 0, totalProperties: 0 };
-            })
-          ]);
+            }),
+            fetch12MonthAverageSoldPrice(postcode, basicInfo.propertyType).catch(error => {
+              console.error('❌ fetch12MonthAverageSoldPrice error:', error);
+              console.error('❌ Error stack:', error.stack);
+              return 0;
+            }),
+            // Add locality data fetching
+            coordinates ? fetchLocalityData(coordinates.lat, coordinates.lng).catch(error => {
+              console.error('❌ fetchLocalityData error:', error);
+              return null;
+            }) : Promise.resolve(null)
+          ];
+
+          // Add street analytics if street name is available
+          if (streetName) {
+            console.log(`🏠 Adding street analytics for: ${streetName}`);
+            analyticsPromises.push(
+              fetchStreetSalesCount(streetName, basicInfo.propertyType).catch(error => {
+                console.error('❌ fetchStreetSalesCount error:', error);
+                return 0;
+              }),
+              fetchStreetAveragePrice(streetName, basicInfo.propertyType).catch(error => {
+                console.error('❌ fetchStreetAveragePrice error:', error);
+                return 0;
+              })
+            );
+          }
+
+          const results = await Promise.all(analyticsPromises);
+          const [fiveYearTrend, pricePerSqm, avgSoldPrice12Months, localityData, ...streetResults] = results;
+          console.log(`🔍 API CHECK: avgSoldPrice12Months = ${avgSoldPrice12Months}`);
+          // Handle street results if they exist
+          let streetSalesCount = 0;
+          let streetAveragePrice = 0;
+          if (streetName && streetResults.length >= 2) {
+            streetSalesCount = streetResults[0];
+            streetAveragePrice = streetResults[1];
+          }
           
           console.log(`🔍 fetchFiveYearTrend returned:`, fiveYearTrend);
           console.log(`🔍 fetchEnhancedPricePerSqm returned:`, pricePerSqm);
+          console.log(`🔍 fetch12MonthAverageSoldPrice returned:`, avgSoldPrice12Months);
+          console.log(`🔍 fetchLocalityData returned:`, localityData);
+          console.log(`🔍 avgSoldPrice12Months type:`, typeof avgSoldPrice12Months);
+          console.log(`🔍 avgSoldPrice12Months value:`, avgSoldPrice12Months);
 
+          // Assign all enhanced analytics values
           enhancedAnalytics.fiveYearTrend = fiveYearTrend;
           enhancedAnalytics.pricePerSqm = pricePerSqm;
+          enhancedAnalytics.avgSoldPrice12Months = avgSoldPrice12Months;
+          enhancedAnalytics.streetSalesCount = streetSalesCount;
+          enhancedAnalytics.streetAveragePrice = streetAveragePrice;
+          enhancedAnalytics.localityData = localityData;
+          
+          console.log(`✅ Enhanced analytics complete:`, {
+            fiveYearTrendCount: fiveYearTrend?.length || 0,
+            avgSoldPrice12Months: `£${avgSoldPrice12Months?.toLocaleString() || '0'}`,
+            streetSalesCount,
+            streetAveragePrice: `£${streetAveragePrice?.toLocaleString() || '0'}`
+          });
 
           // Simple time on market calculation: today - listing date
           if (scrapedPropertyData && scrapedPropertyData.dateListedIso) {
@@ -323,17 +405,7 @@ Guidelines:
             console.log(`⏰ No listing date available for time on market calculation`);
           }
 
-          // Street analytics (if street name available)
-          if (streetName) {
-            console.log(`🏠 Analyzing street: ${streetName}`);
-            const [streetSalesCount, streetAveragePrice] = await Promise.all([
-              fetchStreetSalesCount(streetName, basicInfo.propertyType),
-              fetchStreetAveragePrice(streetName, basicInfo.propertyType)
-            ]);
-
-            enhancedAnalytics.streetSalesCount = streetSalesCount;
-            enhancedAnalytics.streetAveragePrice = streetAveragePrice;
-          }
+          // Street analytics are now handled above in the main Promise.all
         }
       } catch (error) {
         console.error('❌ Enhanced analytics error:', error);
@@ -564,7 +636,88 @@ Guidelines:
       });
     }
 
-    // Step 8: Compile final analysis with exact JSON structure
+    // Step 8: Generate AI Summary & Recommendations
+    console.log('🤖 Generating AI summary and recommendations...');
+    let aiSummary = {
+      positives: [],
+      considerations: [],
+      overall: []
+    };
+    
+    try {
+      const summaryPrompt = `You are a property analysis expert. Based on the comprehensive analysis below, provide a concise summary with actionable insights.
+
+PROPERTY DETAILS:
+- Address: ${basicInfo.propertyAddress || 'Unknown'}
+- Price: £${basicInfo.listingPrice?.toLocaleString() || 'Unknown'}
+- Type: ${basicInfo.propertyType || 'Unknown'}
+- Size: ${basicInfo.floorAreaSqm ? basicInfo.floorAreaSqm + ' sqm' : 'Unknown'}
+- Bedrooms: ${basicInfo.numberOfBedrooms || 'Unknown'}
+- Bathrooms: ${basicInfo.numberOfBathrooms || 'Unknown'}
+
+MARKET ANALYSIS:
+- 12-Month Average Sold Price: £${enhancedAnalytics.avgSoldPrice12Months?.toLocaleString() || 'N/A'}
+- Average Price per SqM: £${enhancedAnalytics.pricePerSqm?.averagePricePerSqm?.toLocaleString() || 'N/A'}
+- Street Sales Count: ${enhancedAnalytics.streetSalesCount || 0}
+- 5-Year Trend: ${enhancedAnalytics.fiveYearTrend?.length > 0 ? JSON.stringify(enhancedAnalytics.fiveYearTrend) : 'N/A'}
+
+FEATURES:
+${Object.entries(binaryFeatures).filter(([k, v]) => v === true).map(([k]) => `- ${k}: Yes`).join('\n')}
+
+LOCALITY (Google Maps):
+- Parks nearby: ${enhancedAnalytics.localityData?.parks?.length || 0}
+- Schools nearby: ${enhancedAnalytics.localityData?.schools?.length || 0}
+- Hospitals nearby: ${enhancedAnalytics.localityData?.hospitals?.length || 0}
+- Transit stations nearby: ${enhancedAnalytics.localityData?.trainStations?.length || 0}
+- Supermarkets nearby: ${enhancedAnalytics.localityData?.supermarkets?.length || 0}
+
+Return a JSON object with this structure:
+{
+  "positives": ["bullet 1", "bullet 2", "bullet 3"],
+  "considerations": ["bullet 1", "bullet 2", "bullet 3"],
+  "overall": ["Overall assessment in 1-2 sentences"]
+}
+
+Guidelines:
+- Keep each bullet point concise (max 15 words)
+- Focus on data-driven insights, not generic statements
+- Positives: 3-5 strong points about the property/location
+- Considerations: 3-5 things to think about or potential concerns
+- Overall: 1-2 sentence summary of whether this represents good value
+- Use specific numbers and data points where available
+- Be objective and balanced`;
+
+      const summaryCompletion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are a property market expert providing concise, data-driven summaries. Return only valid JSON."
+          },
+          {
+            role: "user",
+            content: summaryPrompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 800,
+        response_format: { type: "json_object" }
+      });
+
+      aiSummary = JSON.parse(summaryCompletion.choices[0]?.message?.content || '{}');
+      console.log('✅ AI Summary generated:', aiSummary);
+      
+    } catch (error) {
+      console.error('❌ AI summary generation failed:', error);
+      // Use fallback summary
+      aiSummary = {
+        positives: ["Property analysis completed"],
+        considerations: ["Review all data points carefully"],
+        overall: ["Property analysis available for your review."]
+      };
+    }
+
+    // Step 9: Compile final analysis with exact JSON structure
     const analysisResult = {
       success: true,
       timestamp: new Date().toISOString(),
@@ -575,6 +728,8 @@ Guidelines:
         additionalCriteria,
         customPreferences,
         enhancedAnalytics,
+        localityData: enhancedAnalytics.localityData || null,
+        aiSummary,
         failedAnalysis: comprehensiveFailedAnalysis,
         userPreferences: userPreferences || null,
         marketGraphs,

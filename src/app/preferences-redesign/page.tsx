@@ -192,10 +192,15 @@ function PropertyPreferencesContent() {
       },
     };
 
+    // Declare variables outside try block so they're accessible in catch
+    let listingText = "No listing text available";
+    let rightmoveData = null;
+    let scrapeData = null;
+    let propertyData = null;
+    let marketMetrics = null;
+
     try {
       // No mock data - we'll use only real scraped data
-      let propertyData = null;
-      let marketMetrics = null;
 
       const userPrefs = {
         features: features, // Include the features object
@@ -223,11 +228,6 @@ function PropertyPreferencesContent() {
       // Perform comprehensive analysis
       console.log('🔍 Starting comprehensive property analysis...');
       
-      // Use direct listing text for testing (no scraper)
-      let listingText = "No listing text available";
-      let rightmoveData = null;
-      let scrapeData = null;
-      
       if (rightmoveUrl) {
         try {
           console.log('🕷️ Scraping Rightmove URL:', rightmoveUrl);
@@ -249,7 +249,19 @@ function PropertyPreferencesContent() {
             
             if (scrapeData.propertyData) {
               // Extract listing text from the property data for comprehensive analysis
-              listingText = scrapeData.propertyData.description || '';
+              // Use the full HTML listing text for better analysis, or fallback to description
+              listingText = scrapeData.listingText || scrapeData.propertyData.description || '';
+              
+              // If listingText is still empty or very short, create a comprehensive description
+              if (!listingText || listingText.length < 50) {
+                listingText = `Property: ${scrapeData.propertyData.address || 'Unknown address'}, ` +
+                  `Price: £${scrapeData.propertyData.price || 'Unknown'}, ` +
+                  `${scrapeData.propertyData.bedrooms || 'Unknown'} bedrooms, ` +
+                  `${scrapeData.propertyData.bathrooms || 'Unknown'} bathrooms, ` +
+                  `${scrapeData.propertyData.propertyType || 'Unknown type'}, ` +
+                  `Size: ${scrapeData.propertyData.size || 'Unknown size'}`;
+              }
+              
               rightmoveData = {
                 address: scrapeData.propertyData.address,
                 price: scrapeData.propertyData.price,
@@ -354,40 +366,47 @@ function PropertyPreferencesContent() {
       router.push('/results');
       
     } catch (error) {
-      console.error('Analysis failed:', error);
+      console.error('❌ Analysis failed:', error);
+      console.error('❌ Error details:', error.message || error);
       
       // Fallback: Store the scraped data directly if comprehensive analysis fails
-      if (scrapeData?.propertyData) {
+      if (rightmoveData) {
         console.log('🔄 Using fallback: storing scraped data directly');
         
         const fallbackAnalysisData = {
-          basicInfo: {
-            propertyAddress: scrapeData.propertyData.address,
-            listingPrice: scrapeData.propertyData.price,
-            area: scrapeData.propertyData.postcode,
-            floorAreaSqm: scrapeData.propertyData.size,
-            numberOfBedrooms: scrapeData.propertyData.bedrooms,
-            numberOfBathrooms: scrapeData.propertyData.bathrooms,
-            propertyType: scrapeData.propertyData.propertyType,
-            description: scrapeData.propertyData.description,
-            listingUrl: rightmoveUrl
-          },
-          binaryFeatures: {
-            garage: null,
-            garden: null,
-            parking: null,
-            newBuild: null
-          },
-          additionalCriteria: null,
-          customPreferences: null,
-          enhancedAnalytics: null,
-          failedAnalysis: [],
-          userPreferences: userPrefs,
-          marketGraphs: null,
-          diagnostics: {
-            confidence: 0.7,
-            missing: ['Comprehensive analysis failed - using basic scraped data'],
-            notes: ['Analysis fell back to basic scraping due to comprehensive analysis failure']
+          success: false,
+          analysis: {
+            basicInfo: {
+              propertyAddress: rightmoveData?.address || 'Unknown',
+              listingPrice: rightmoveData?.price || null,
+              area: null,
+              floorAreaSqm: rightmoveData?.sizeInSqm || null,
+              numberOfBedrooms: rightmoveData?.bedrooms || null,
+              numberOfBathrooms: rightmoveData?.bathrooms || null,
+              propertyType: rightmoveData?.propertyType || null,
+              description: rightmoveData?.description || '',
+              listingUrl: rightmoveUrl
+            },
+            binaryFeatures: {
+              garage: null,
+              garden: null,
+              parking: null,
+              newBuild: null
+            },
+            additionalCriteria: [],
+            customPreferences: [],
+            enhancedAnalytics: null,
+            failedAnalysis: [{
+              preference: 'Comprehensive Analysis',
+              reason: error.message || 'Analysis failed - displaying limited data'
+            }],
+            userPreferences: userPrefs,
+            marketGraphs: null,
+            diagnostics: {
+              confidence: 0.3,
+              missing: ['Most analysis features failed'],
+              notes: ['Using minimal fallback data - some features may not be available']
+            }
           }
         };
         
@@ -395,7 +414,53 @@ function PropertyPreferencesContent() {
         localStorage.setItem('userPreferences', JSON.stringify(userPrefs));
         localStorage.setItem('rightmoveUrl', rightmoveUrl); // Store the URL for time on market calculation
         console.log('💾 Fallback analysis data stored in localStorage');
+      } else {
+        // No scraped data available - create minimal fallback
+        const minimalFallbackData = {
+          success: false,
+          analysis: {
+            basicInfo: {
+              propertyAddress: 'Unknown',
+              listingPrice: null,
+              area: null,
+              floorAreaSqm: null,
+              numberOfBedrooms: null,
+              numberOfBathrooms: null,
+              propertyType: null,
+              description: '',
+              listingUrl: rightmoveUrl
+            },
+            binaryFeatures: {
+              garage: null,
+              garden: null,
+              parking: null,
+              newBuild: null
+            },
+            additionalCriteria: [],
+            customPreferences: [],
+            enhancedAnalytics: null,
+            failedAnalysis: [{
+              preference: 'Property Analysis',
+              reason: 'Failed to scrape property data and comprehensive analysis failed'
+            }],
+            userPreferences: userPrefs,
+            marketGraphs: null,
+            diagnostics: {
+              confidence: 0.1,
+              missing: ['All analysis features failed'],
+              notes: ['No property data available - analysis completely failed']
+            }
+          }
+        };
+        
+        localStorage.setItem('comprehensiveAnalysis', JSON.stringify(minimalFallbackData));
+        localStorage.setItem('userPreferences', JSON.stringify(userPrefs));
+        localStorage.setItem('rightmoveUrl', rightmoveUrl);
+        console.log('💾 Minimal fallback data stored in localStorage');
       }
+      
+      // Show user-friendly error message
+      alert('Analysis encountered an error. Showing limited property data. Check console for details.');
       
       // Continue to results page even if analysis fails
       router.push('/results');

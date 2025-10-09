@@ -242,3 +242,4 @@ analyzeS10PricePerSqm2025().catch(error => {
   console.error('❌ Analysis failed:', error);
 });
 
+

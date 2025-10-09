@@ -147,3 +147,4 @@ const analysis = await fetch('/api/price-per-sqm', {
 - **Open Data Communities**: https://guides.opendatacommunities.org/
 - **API Support**: Contact through the Open Data Communities platform
 
+

@@ -1,6 +1,6 @@
 // Google Maps Places API configuration
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
-const GOOGLE_MAPS_API_BASE = 'https://maps.googleapis.com/maps/api/place';
+const GOOGLE_MAPS_API_BASE = 'https://places.googleapis.com/v1';
 
 // Simple in-memory cache for Places API calls
 const placesCache = new Map<string, { data: any; timestamp: number }>();
@@ -97,29 +97,67 @@ async function searchNearbyPlaces(
   }
 
   try {
-    const url = `${GOOGLE_MAPS_API_BASE}/nearbysearch/json?location=${latitude},${longitude}&radius=${radius}&type=${placeType}&key=${GOOGLE_MAPS_API_KEY}`;
+    // New Places API uses POST with JSON body
+    const url = `${GOOGLE_MAPS_API_BASE}/places:searchNearby`;
     
-    const response = await fetch(url);
+    const requestBody = {
+      includedTypes: [placeType],
+      maxResultCount: 5,
+      locationRestriction: {
+        circle: {
+          center: {
+            latitude: latitude,
+            longitude: longitude
+          },
+          radius: radius
+        }
+      }
+    };
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location,places.types,places.rating'
+      },
+      body: JSON.stringify(requestBody)
+    });
     
     if (!response.ok) {
       console.warn(`Google Maps API error: ${response.status}`);
       return getFallbackPlaces(placeType, latitude, longitude);
     }
 
-    const data: PlacesResponse = await response.json();
+    const data = await response.json();
     
-    if (data.status !== 'OK') {
-      console.warn(`Google Maps API status: ${data.status}`);
+    if (!data.places || data.places.length === 0) {
+      console.warn('No places found, using fallback');
       return getFallbackPlaces(placeType, latitude, longitude);
     }
 
-    // Add distance calculation to each result
-    const resultsWithDistance = data.results.map(place => ({
-      ...place,
-      distance: calculateDistance(latitude, longitude, place.geometry.location.lat, place.geometry.location.lng)
+    // Convert new API format to our existing format
+    const resultsWithDistance = data.places.map((place: any) => ({
+      place_id: place.id || `place_${Math.random()}`,
+      name: place.displayName?.text || 'Unknown',
+      vicinity: place.formattedAddress || '',
+      geometry: {
+        location: {
+          lat: place.location?.latitude || latitude,
+          lng: place.location?.longitude || longitude
+        }
+      },
+      rating: place.rating,
+      types: place.types || [placeType],
+      distance: calculateDistance(
+        latitude, 
+        longitude, 
+        place.location?.latitude || latitude, 
+        place.location?.longitude || longitude
+      )
     }));
 
-    // Sort by distance and limit to top 5
+    // Sort by distance
     const sortedResults = resultsWithDistance
       .sort((a, b) => (a.distance || 0) - (b.distance || 0))
       .slice(0, 5);
@@ -152,8 +190,8 @@ function getFallbackPlaces(placeType: string, latitude: number, longitude: numbe
     hospital: [
       { place_id: 'fallback_hospital_1', name: isSheffield ? 'Royal Hallamshire Hospital' : 'General Hospital', vicinity: 'City center', geometry: { location: { lat: latitude + 0.02, lng: longitude - 0.01 } }, types: ['hospital'], distance: 2500 }
     ],
-    train_station: [
-      { place_id: 'fallback_station_1', name: isSheffield ? 'Sheffield Station' : 'Railway Station', vicinity: 'City center', geometry: { location: { lat: latitude + 0.015, lng: longitude + 0.005 } }, types: ['train_station'], distance: 1800 }
+    transit_station: [
+      { place_id: 'fallback_station_1', name: isSheffield ? 'Sheffield Station' : 'Railway Station', vicinity: 'City center', geometry: { location: { lat: latitude + 0.015, lng: longitude + 0.005 } }, types: ['transit_station'], distance: 4900 }
     ],
     gas_station: [
       { place_id: 'fallback_gas_1', name: 'Shell Petrol Station', vicinity: 'Main road', geometry: { location: { lat: latitude + 0.001, lng: longitude + 0.002 } }, types: ['gas_station'], distance: 200 },
@@ -196,7 +234,7 @@ export async function fetchLocalityData(latitude: number, longitude: number): Pr
     searchNearbyPlaces(latitude, longitude, 'airport', 50000), // Larger radius for airports
     searchNearbyPlaces(latitude, longitude, 'school'),
     searchNearbyPlaces(latitude, longitude, 'hospital', 10000), // Larger radius for hospitals
-    searchNearbyPlaces(latitude, longitude, 'train_station'),
+    searchNearbyPlaces(latitude, longitude, 'transit_station', 10000), // Use transit_station for better results, 10km radius
     searchNearbyPlaces(latitude, longitude, 'gas_station'),
     searchNearbyPlaces(latitude, longitude, 'supermarket')
   ]);

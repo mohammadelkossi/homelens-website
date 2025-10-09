@@ -331,6 +331,8 @@ export function derivePostcodeArea(fullPostcode: string): string {
 export async function fetchFiveYearTrend(postcode: string, propertyType: string): Promise<YearlyTrendData[]> {
   try {
     console.log(`🔍 fetchFiveYearTrend called with postcode="${postcode}", propertyType="${propertyType}"`);
+    
+    // Use the enhanced Land Registry analytics which reads from local CSV files
     const result = await enhancedLandRegistry.getFiveYearTrend(postcode, propertyType);
     console.log(`🔍 fetchFiveYearTrend result:`, result);
     return result;
@@ -360,6 +362,21 @@ export async function fetchStreetAveragePrice(streetName: string, propertyType: 
     return await enhancedLandRegistry.getStreetAveragePrice(streetName, propertyType);
   } catch (error) {
     console.error('Error fetching street average price:', error);
+    return 0;
+  }
+}
+
+/**
+ * Get 12-month average sold price by postcode and property type
+ */
+export async function fetch12MonthAverageSoldPrice(postcode: string, propertyType: string): Promise<number> {
+  try {
+    console.log(`🔍 fetch12MonthAverageSoldPrice called with postcode="${postcode}", propertyType="${propertyType}"`);
+    const result = await enhancedLandRegistry.get12MonthAverageSoldPrice(postcode, propertyType);
+    console.log(`✅ fetch12MonthAverageSoldPrice result: £${result.toLocaleString()}`);
+    return result;
+  } catch (error) {
+    console.error('❌ Error fetching 12-month average sold price:', error);
     return 0;
   }
 }

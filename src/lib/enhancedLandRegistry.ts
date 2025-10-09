@@ -135,7 +135,7 @@ class EnhancedLandRegistryAnalytics {
       const lines = fileContent.split('\n');
       
       const records: LandRegistryRecord[] = [];
-      for (let i = 1; i < lines.length; i++) { // Skip header
+      for (let i = 0; i < lines.length; i++) { // No header to skip in Land Registry CSV
         const line = lines[i].trim();
         if (line) {
           const record = this.parseCSVLine(line);
@@ -172,6 +172,17 @@ class EnhancedLandRegistryAnalytics {
     return postcode.replace(/\s+/g, '').toUpperCase();
   }
 
+  private getYearFromDate(dateString: string): number {
+    try {
+      // Handle both "2022-02-28" and "2022-02-28 00:00" formats
+      const datePart = dateString.split(' ')[0];
+      return parseInt(datePart.split('-')[0]);
+    } catch (error) {
+      console.error('Error parsing date:', dateString, error);
+      return 0;
+    }
+  }
+
   private matchesPostcode(targetPostcode: string, recordPostcode: string): boolean {
     const normalizedTarget = this.normalizePostcode(targetPostcode);
     const normalizedRecord = this.normalizePostcode(recordPostcode);
@@ -201,7 +212,7 @@ class EnhancedLandRegistryAnalytics {
       'bungalow': 'D', // Default bungalow to detached
     };
     
-    return propertyTypeMap[normalized] || normalized;
+    return propertyTypeMap[normalized] || propertyType.toUpperCase();
   }
 
   private normalizeStreetName(streetName: string): string {
@@ -252,10 +263,21 @@ class EnhancedLandRegistryAnalytics {
   private isWithinPastYear(dateStr: string): boolean {
     try {
       const recordDate = new Date(dateStr);
+      const currentDate = new Date();
       const oneYearAgo = new Date();
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-      return recordDate >= oneYearAgo;
-    } catch {
+      
+      const isWithin = recordDate >= oneYearAgo && recordDate <= currentDate;
+      
+      // Debug logging - comment out after fixing
+      console.log(`      📅 Date check: ${dateStr} -> ${recordDate.toISOString()}`);
+      console.log(`         One year ago: ${oneYearAgo.toISOString()}`);
+      console.log(`         Current date: ${currentDate.toISOString()}`);
+      console.log(`         Is within past year? ${isWithin}`);
+      
+      return isWithin;
+    } catch (error) {
+      console.error(`      ❌ Error parsing date "${dateStr}":`, error);
       return false;
     }
   }
@@ -271,15 +293,46 @@ class EnhancedLandRegistryAnalytics {
 
     const trendData: YearlyTrendData[] = [];
     const years = [2021, 2022, 2023, 2024, 2025];
+    const normalizedPostcode = this.normalizePostcode(postcode);
+    const normalizedPropertyType = this.normalizePropertyType(propertyType);
 
     for (const year of years) {
-      const records = this.loadYearData(year);
-      const matchingRecords = records.filter(record => 
-        this.matchesPostcode(postcode, record.postcode) &&
-        record.propertyType === this.normalizePropertyType(propertyType)
-      );
+      let matchingRecords: LandRegistryRecord[] = [];
+      
+      try {
+        // Use grep to find matching records efficiently
+        const { execSync } = require('child_process');
+        const filePath = path.join(this.dataPath, `land-registry-price-paid-${year}.csv`);
+        
+        if (fs.existsSync(filePath)) {
+          try {
+            const grepCommand = `grep -i "${normalizedPostcode}.*SHEFFIELD" "${filePath}" | grep '","${normalizedPropertyType}",'`;
+            const grepOutput = execSync(grepCommand, { encoding: 'utf-8', maxBuffer: 1024 * 1024 * 10 });
+            const lines = grepOutput.split('\n').filter(line => line.trim());
+            
+            console.log(`🔍 Grep found ${lines.length} lines for ${year}`);
+            
+            for (const line of lines) {
+              const record = this.parseCSVLine(line.trim());
+              if (record && record.price > 0) {
+                const recordYear = this.getYearFromDate(record.dateOfTransfer);
+                if (recordYear === year) {
+                  matchingRecords.push(record);
+                }
+              }
+            }
+          } catch (grepError: any) {
+            // Grep returns exit code 1 when no matches found, which is normal
+            if (!grepError.message?.includes('Command failed')) {
+              console.warn(`Grep error for year ${year}:`, grepError.message);
+            }
+          }
+        }
+      } catch (error: any) {
+        console.error(`Error processing year ${year}:`, error.message);
+      }
 
-      console.log(`📊 Year ${year}: ${records.length} total records, ${matchingRecords.length} matching records`);
+      console.log(`📊 Year ${year}: ${matchingRecords.length} matching records`);
 
       if (matchingRecords.length > 0) {
         const averagePrice = matchingRecords.reduce((sum, record) => sum + record.price, 0) / matchingRecords.length;
@@ -297,6 +350,7 @@ class EnhancedLandRegistryAnalytics {
       }
     }
 
+    console.log(`✅ Enhanced Land Registry: 5-year trend complete:`, trendData);
     this.setCachedData(cacheKey, trendData);
     return trendData;
   }
@@ -346,6 +400,73 @@ class EnhancedLandRegistryAnalytics {
 
     const averagePrice = allPrices.length > 0 ? allPrices.reduce((sum, price) => sum + price, 0) / allPrices.length : 0;
     const result = Math.round(averagePrice);
+    
+    this.setCachedData(cacheKey, result);
+    return result;
+  }
+
+  // Get Average Sold Price for the past 12 months by postcode and property type
+  async get12MonthAverageSoldPrice(postcode: string, propertyType: string): Promise<number> {
+    const cacheKey = `avg_sold_12m_${this.normalizePostcode(postcode)}_${this.normalizePropertyType(propertyType)}`;
+    const cached = this.getCachedData(cacheKey);
+    if (cached) {
+      console.log(`📦 Using cached result for ${cacheKey}: £${cached.toLocaleString()}`);
+      return cached;
+    }
+
+    const normalizedPostcode = this.normalizePostcode(postcode);
+    const normalizedPropertyType = this.normalizePropertyType(propertyType);
+    
+    console.log(`🔍 Enhanced Land Registry: Getting 12-month average sold price`);
+    console.log(`   Input: postcode="${postcode}", propertyType="${propertyType}"`);
+    console.log(`   Normalized: postcode="${normalizedPostcode}", propertyType="${normalizedPropertyType}"`);
+
+    const years = [2024, 2025];
+    const allPrices: number[] = [];
+    let totalRecordsChecked = 0;
+
+    for (const year of years) {
+      const records = this.loadYearData(year);
+      totalRecordsChecked += records.length;
+      
+      // Debug: Sample first few records to see what we're working with
+      if (year === 2024 && records.length > 0) {
+        console.log(`📋 Sample records from ${year}:`, records.slice(0, 3).map(r => ({
+          postcode: r.postcode,
+          propertyType: r.propertyType,
+          price: r.price,
+          date: r.dateOfTransfer
+        })));
+      }
+      
+      const matchingRecords = records.filter(record => {
+        const postcodeMatch = this.matchesPostcode(postcode, record.postcode);
+        const typeMatch = record.propertyType === normalizedPropertyType;
+        const dateMatch = this.isWithinPastYear(record.dateOfTransfer);
+        
+        // Debug first few matches/mismatches
+        if (records.indexOf(record) < 5) {
+          console.log(`   Record check: postcode=${postcodeMatch} (${record.postcode}), type=${typeMatch} (${record.propertyType}), date=${dateMatch} (${record.dateOfTransfer})`);
+        }
+        
+        return postcodeMatch && typeMatch && dateMatch;
+      });
+      
+      console.log(`📊 12-month avg - Year ${year}: ${matchingRecords.length} matching records out of ${records.length} total`);
+      allPrices.push(...matchingRecords.map(r => r.price));
+    }
+
+    console.log(`📊 12-month avg - Total records checked: ${totalRecordsChecked}`);
+    console.log(`📊 12-month avg - Total matching properties: ${allPrices.length}`);
+    
+    if (allPrices.length > 0) {
+      console.log(`📊 12-month avg - Sample prices:`, allPrices.slice(0, 5).map(p => `£${p.toLocaleString()}`));
+    }
+    
+    const averagePrice = allPrices.length > 0 ? allPrices.reduce((sum, price) => sum + price, 0) / allPrices.length : 0;
+    const result = Math.round(averagePrice);
+    
+    console.log(`✅ 12-month avg sold price: £${result.toLocaleString()} (from ${allPrices.length} properties)`);
     
     this.setCachedData(cacheKey, result);
     return result;
