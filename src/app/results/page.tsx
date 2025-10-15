@@ -1,5 +1,6 @@
 'use client';
 import React from "react";
+import { useRouter } from "next/navigation";
 import FiveYearTrendChart from "@/components/FiveYearTrendChart";
 import PriceHistoryChart from "@/components/PriceHistoryChart";
 import { HOME_LENS_CONFIG, scoreHomeLens, buildScoreContext } from "@/lib/homelensScoring";
@@ -220,6 +221,7 @@ function SoldChangeChart({ data }) {
 // ===================== Main Component ==================== //
 function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDData = false, propertyData = null, binaryCriteria = { met: [], notMet: [] }, aiAnalysis = null, priceHistory = null, onPrint }) {
   const { overallScore, overview, market, customCriteria, summary } = data;
+  const router = useRouter();
   
   // Track missing data items
   const missingDataItems = React.useMemo(() => {
@@ -300,7 +302,14 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
       {/* Header Actions */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-        <h1 className="text-2xl font-semibold" style={{color: COLORS.tealDark}}>
+        <h1 
+          className="text-2xl font-semibold cursor-pointer hover:opacity-80 transition-opacity" 
+          style={{color: COLORS.tealDark}}
+          onClick={() => {
+            console.log('🏠 HomeLens title clicked - navigating to homepage');
+            router.push('/');
+          }}
+        >
           HomeLens Report
           {overview?.address && overview.address !== "123 Abbey Lane, Sheffield S10" && (
             <span className="block text-lg font-normal text-gray-600 mt-1">
@@ -525,34 +534,53 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
           </div>
 
           <div className="space-y-3">
-            {propertyData.saleHistory.map((sale, index) => (
-              <div key={index} className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{backgroundColor: COLORS.beige}}>
-                    <span className="text-sm font-semibold" style={{color: COLORS.navy}}>
-                      {propertyData.saleHistory.length - index}
-                    </span>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-gray-900">{fmtGBP(sale.price)}</div>
-                    <div className="text-sm text-gray-500">{sale.saleType || 'Sold'}</div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-medium text-gray-900">
-                    {new Date(sale.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </div>
-                  {index < propertyData.saleHistory.length - 1 && (
-                    <div className="text-sm" style={{color: 
-                      sale.price > propertyData.saleHistory[index + 1].price ? '#16a34a' : '#ef4444'
-                    }}>
-                      {sale.price > propertyData.saleHistory[index + 1].price ? '+' : ''}
-                      {fmtGBP(sale.price - propertyData.saleHistory[index + 1].price)}
+            {propertyData.saleHistory.map((sale, index) => {
+              // Handle both Apify format {year, soldPrice, percentageChange} and old format {date, price, saleType}
+              const saleYear = sale.year || sale.date;
+              const salePrice = sale.soldPrice 
+                ? parseInt(sale.soldPrice.replace(/[£,]/g, '')) 
+                : (typeof sale.price === 'string' ? parseInt(sale.price.replace(/[£,]/g, '')) : sale.price);
+              const salePriceFormatted = sale.soldPrice || fmtGBP(sale.price);
+              const percentageChange = sale.percentageChange;
+              
+              return (
+                <div key={index} className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{backgroundColor: COLORS.beige}}>
+                      <span className="text-sm font-semibold" style={{color: COLORS.navy}}>
+                        {propertyData.saleHistory.length - index}
+                      </span>
                     </div>
-                  )}
+                    <div>
+                      <div className="font-semibold text-gray-900">{salePriceFormatted}</div>
+                      <div className="text-sm text-gray-500">{sale.saleType || 'Sold'}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-medium text-gray-900">{saleYear}</div>
+                    {percentageChange && (
+                      <div className="text-sm" style={{color: percentageChange.startsWith('+') ? '#16a34a' : '#ef4444'}}>
+                        {percentageChange}
+                      </div>
+                    )}
+                    {!percentageChange && index < propertyData.saleHistory.length - 1 && (
+                      <div className="text-sm" style={{color: 
+                        salePrice > (propertyData.saleHistory[index + 1].soldPrice 
+                          ? parseInt(propertyData.saleHistory[index + 1].soldPrice.replace(/[£,]/g, ''))
+                          : propertyData.saleHistory[index + 1].price) ? '#16a34a' : '#ef4444'
+                      }}>
+                        {salePrice > (propertyData.saleHistory[index + 1].soldPrice 
+                          ? parseInt(propertyData.saleHistory[index + 1].soldPrice.replace(/[£,]/g, ''))
+                          : propertyData.saleHistory[index + 1].price) ? '+' : ''}
+                        {fmtGBP(salePrice - (propertyData.saleHistory[index + 1].soldPrice 
+                          ? parseInt(propertyData.saleHistory[index + 1].soldPrice.replace(/[£,]/g, ''))
+                          : propertyData.saleHistory[index + 1].price))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -1246,10 +1274,12 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
             bathrooms: raw.analysis.basicInfo.numberOfBathrooms,
             propertyType: raw.analysis.basicInfo.propertyType,
             size: raw.analysis.basicInfo.floorAreaSqm,
-            description: `${raw.analysis.basicInfo.propertyAddress} - ${raw.analysis.basicInfo.propertyType}`
+            description: `${raw.analysis.basicInfo.propertyAddress} - ${raw.analysis.basicInfo.propertyType}`,
+            saleHistory: raw.analysis.basicInfo.propertySaleHistory || []
           };
           setPropertyData(propertyDataFromAnalysis);
           console.log('🏠 Property data set from analysis:', propertyDataFromAnalysis);
+          console.log('📊 Sale history from analysis:', raw.analysis.basicInfo.propertySaleHistory);
           console.log('📍 Property Address from OpenAI API:', raw.analysis.basicInfo.propertyAddress);
         }
         

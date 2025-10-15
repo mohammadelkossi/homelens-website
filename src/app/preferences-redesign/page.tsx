@@ -232,24 +232,21 @@ function PropertyPreferencesContent() {
         try {
           console.log('🕷️ Scraping Rightmove URL:', rightmoveUrl);
           
-          // Use smart scraper with HTML structure extraction and OpenAI fallback
-          const scrapeResponse = await fetch('/api/analyze', {
+          // Use Apify-first workflow with OpenAI fallback for missing data
+          console.log('🚀 Starting Apify-first scraping workflow...');
+          
+          const scrapeResponse = await fetch('/api/scrape-with-apify-fallback', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              rightmoveUrl: rightmoveUrl,
-              nonNegotiables: {},
-              customCriteria: {}
-            }),
+            body: JSON.stringify({ rightmoveUrl }),
           });
           
           if (scrapeResponse.ok) {
             scrapeData = await scrapeResponse.json();
             console.log('🕷️ Scrape response:', scrapeData);
             
-            if (scrapeData.propertyData) {
+            if (scrapeData.success && scrapeData.propertyData) {
               // Extract listing text from the property data for comprehensive analysis
-              // Use the full HTML listing text for better analysis, or fallback to description
               listingText = scrapeData.listingText || scrapeData.propertyData.description || '';
               
               // If listingText is still empty or very short, create a comprehensive description
@@ -259,7 +256,7 @@ function PropertyPreferencesContent() {
                   `${scrapeData.propertyData.bedrooms || 'Unknown'} bedrooms, ` +
                   `${scrapeData.propertyData.bathrooms || 'Unknown'} bathrooms, ` +
                   `${scrapeData.propertyData.propertyType || 'Unknown type'}, ` +
-                  `Size: ${scrapeData.propertyData.size || 'Unknown size'}`;
+                  `Size: ${scrapeData.propertyData.sizeInSqm || 'Unknown size'} sqm`;
               }
               
               rightmoveData = {
@@ -268,20 +265,36 @@ function PropertyPreferencesContent() {
                 bedrooms: scrapeData.propertyData.bedrooms,
                 bathrooms: scrapeData.propertyData.bathrooms,
                 propertyType: scrapeData.propertyData.propertyType,
-                size: scrapeData.propertyData.size,
-                sizeInSqm: scrapeData.propertyData.size,
+                size: scrapeData.propertyData.sizeInSqm,
+                sizeInSqm: scrapeData.propertyData.sizeInSqm,
                 description: scrapeData.propertyData.description,
                 features: scrapeData.propertyData.features,
                 images: scrapeData.propertyData.images,
-                firstSeen: scrapeData.propertyData.dateListedIso,
+                coordinates: scrapeData.propertyData.coordinates,
+                firstSeen: scrapeData.propertyData.firstVisibleDate || scrapeData.propertyData.listingUpdateDate,
                 nowUtc: new Date().toISOString(),
-                daysOnMarket: null
+                daysOnMarket: null,
+                priceHistory: scrapeData.propertyData.priceHistory,
+                epc: scrapeData.propertyData.epc,
+                floorplans: scrapeData.propertyData.floorplans,
+                tenure: scrapeData.propertyData.tenure,
+                councilTaxBand: scrapeData.propertyData.councilTaxBand,
+                agent: scrapeData.propertyData.agent
               };
-              console.log('✅ Successfully scraped property data:', rightmoveData);
+              
+              console.log('✅ Successfully scraped property data with Apify + OpenAI fallback');
               console.log('📊 Scraping method:', scrapeData.scrapingMethod);
-              if (scrapeData.fallbackReason) {
-                console.log('⚠️ Fallback reason:', scrapeData.fallbackReason);
-              }
+              console.log('📊 Extraction methods:', scrapeData.extractionMethods);
+              console.log('  - Size extraction:', scrapeData.extractionMethods?.size);
+              console.log('  - Date extraction:', scrapeData.extractionMethods?.firstListedDate);
+              console.log('📝 Property summary:');
+              console.log('  - Address:', rightmoveData.address);
+              console.log('  - Price: £' + rightmoveData.price?.toLocaleString());
+              console.log('  - Size:', rightmoveData.sizeInSqm, 'sqm');
+              console.log('  - Bedrooms:', rightmoveData.bedrooms);
+              console.log('  - Bathrooms:', rightmoveData.bathrooms);
+              console.log('  - First Listed:', rightmoveData.firstSeen);
+              console.log('  - Features:', rightmoveData.features?.length || 0);
               console.log('📝 Listing text extracted:', listingText.substring(0, 100) + '...');
             } else {
               console.error('❌ Scraping failed:', scrapeData.error);
@@ -321,7 +334,11 @@ function PropertyPreferencesContent() {
             sizeInSqm: scrapeData.propertyData.size,
             description: scrapeData.propertyData.description,
             features: scrapeData.propertyData.features,
-            images: scrapeData.propertyData.images
+            images: scrapeData.propertyData.images,
+            priceHistory: scrapeData.propertyData.priceHistory,
+            coordinates: scrapeData.propertyData.coordinates,
+            firstVisibleDate: scrapeData.propertyData.firstVisibleDate,
+            listingUpdateDate: scrapeData.propertyData.listingUpdateDate
           } : null,
           toggles: {
             garage: userPrefs.features["Garage"] || false,

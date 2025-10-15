@@ -163,10 +163,12 @@ export async function POST(request: NextRequest) {
         numberOfBedrooms: scrapedPropertyData.bedrooms || null,
         numberOfBathrooms: scrapedPropertyData.bathrooms || null,
         propertyType: scrapedPropertyData.propertyType || null,
-        propertySaleHistory: null,
+        propertySaleHistory: scrapedPropertyData.priceHistory || null,
         listingUrl: url || null,
         coordinates: scrapedPropertyData.coordinates || null,
-        address: scrapedPropertyData.address || null
+        address: scrapedPropertyData.address || null,
+        firstVisibleDate: scrapedPropertyData.firstVisibleDate || null,
+        listingUpdateDate: scrapedPropertyData.listingUpdateDate || null
       };
       console.log('📊 Using scraped data:', basicInfo);
     } else {

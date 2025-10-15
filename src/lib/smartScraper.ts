@@ -1,5 +1,6 @@
-// Smart Scraper with OpenAI Fallback for MVP
+// Smart Scraper with Apify Primary + OpenAI Fallback
 import { scrapeRightmoveProperty, isScrapedDataValid, ScrapedPropertyData } from './scraper';
+import { scrapeWithApify, ApifyPropertyData } from './apifyScraper';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
@@ -8,20 +9,20 @@ const openai = new OpenAI({
 
 export interface SmartScrapeResult {
   data: ScrapedPropertyData;
-  method: 'scraper' | 'openai_fallback';
+  method: 'apify' | 'scraper' | 'openai_fallback';
   missingFields?: string[];
   fallbackReason?: string;
 }
 
 /**
- * Smart scraper that tries the web scraper first, falls back to OpenAI if needed
- * Perfect for MVP - fast and cheap for 90% of cases, reliable fallback for edge cases
+ * Smart scraper - tries web scraper first (fast & free), Apify as premium option, OpenAI fallback
+ * Optimized for cost-effectiveness while maintaining reliability
  */
-export async function smartScrapeProperty(url: string): Promise<SmartScrapeResult> {
+export async function smartScrapeProperty(url: string, useApify: boolean = false): Promise<SmartScrapeResult> {
   console.log('🚀 Starting smart scrape for:', url);
   
   try {
-    // Step 1: Try enhanced HTML structure extraction first (fastest & most reliable)
+    // Step 1: Try enhanced HTML structure extraction first (fastest & free)
     console.log('🔍 Attempting enhanced HTML structure extraction...');
     const htmlData = await extractFromHTMLStructure(url);
     
@@ -36,12 +37,41 @@ export async function smartScrapeProperty(url: string): Promise<SmartScrapeResul
       };
     }
     
-    // Step 3: HTML extraction failed validation - try web scraper
+    // Step 3: Try Apify if enabled (premium feature)
+    if (useApify && process.env.APIFY_API_TOKEN) {
+      console.log('🔍 Attempting Apify scraper (premium)...');
+      const apifyResult = await scrapeWithApify(url);
+      
+      if (apifyResult.success && apifyResult.data) {
+        console.log('✅ Apify scraper succeeded with comprehensive data');
+        
+        // Convert Apify data to ScrapedPropertyData format
+        const scrapedData: ScrapedPropertyData = {
+          address: apifyResult.data.address || '',
+          price: apifyResult.data.price || 0,
+          bedrooms: apifyResult.data.bedrooms || 0,
+          bathrooms: apifyResult.data.bathrooms || 0,
+          propertyType: apifyResult.data.propertyType || '',
+          size: apifyResult.data.size || 0,
+          description: apifyResult.data.description || '',
+          features: apifyResult.data.features || [],
+          images: apifyResult.data.images || [],
+          coordinates: apifyResult.data.coordinates || null,
+        };
+        
+        return {
+          data: scrapedData,
+          method: 'apify'
+        };
+      }
+    }
+    
+    // Step 4: Try web scraper
     console.log('⚠️ HTML extraction failed validation, missing fields:', htmlValidation.missingFields);
     console.log('🌐 Attempting web scraper...');
     const scrapedData = await scrapeRightmoveProperty(url);
     
-    // Step 4: Validate scraped data quality
+    // Step 5: Validate scraped data quality
     const validation = isScrapedDataValid(scrapedData);
     
     if (validation.isValid) {
