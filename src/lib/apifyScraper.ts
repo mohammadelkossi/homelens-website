@@ -68,14 +68,20 @@ export async function scrapeWithApify(url: string): Promise<ApifyScrapeResult> {
       token: APIFY_TOKEN,
     });
 
-    // Prepare input for Apify actor
+    // Comprehensive input - everything except estate agent info
     const input = {
       propertyUrls: [{ url }],
-      fullPropertyDetails: true,
-      includePriceHistory: true,
+      fullPropertyDetails: true, // Get all property details
+      includePriceHistory: true, // We need this for sale history
       includeNearestSchools: false, // We use Google Maps for this
       maxProperties: 1,
-      monitoringMode: false
+      monitoringMode: false,
+      addEmptyTrackerRecord: false,
+      deduplicateAtTaskLevel: false,
+      enableDelistingTracker: false,
+      proxy: {
+        useApifyProxy: true
+      }
     };
 
     console.log('📝 Apify input:', JSON.stringify(input, null, 2));
@@ -104,7 +110,7 @@ export async function scrapeWithApify(url: string): Promise<ApifyScrapeResult> {
     const property = items[0];
     console.log('📊 Apify raw data:', JSON.stringify(property, null, 2));
 
-    // Map Apify data to our format
+    // Map comprehensive Apify data to our format (everything except estate agent)
     const mappedData: ApifyPropertyData = {
       address: property.displayAddress || property.title || null,
       price: property.price || null,
@@ -126,12 +132,8 @@ export async function scrapeWithApify(url: string): Promise<ApifyScrapeResult> {
       listingUpdateDate: property.listingUpdateDate || null,
       tenure: property.tenure || null,
       councilTaxBand: property.councilTaxBand || null,
-      agent: {
-        name: property.branchName || null,
-        phone: property.telephone || null,
-        address: property.branchAddress || null,
-        logo: property.branchLogo || null
-      }
+      // Exclude estate agent info as requested
+      agent: null
     };
 
     console.log('✅ Apify scrape successful:', mappedData.address);

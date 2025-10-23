@@ -32,23 +32,17 @@ export async function POST(request: NextRequest) {
     // Use the original URL first, as Apify might need the full URL
     const urlToUse = url;
 
-    // Try different configurations to find one that works
+    // Comprehensive Apify configuration - everything except estate agent
     const apifyConfig = {
       actorId: 'dhrumil/rightmove-scraper',
       input: {
         addEmptyTrackerRecord: false,
         deduplicateAtTaskLevel: false,
         enableDelistingTracker: false,
-        fullPropertyDetails: true, // Enable full details
+        fullPropertyDetails: true, // Get all property details
         includeNearestSchools: false,
-        includePriceHistory: true, // CRITICAL: This was false in your config!
+        includePriceHistory: true, // We need this
         monitoringMode: false,
-        // Try both listUrls and propertyUrls
-        listUrls: [
-          {
-            url: urlToUse
-          }
-        ],
         propertyUrls: [
           {
             url: urlToUse
@@ -57,8 +51,7 @@ export async function POST(request: NextRequest) {
         proxy: {
           useApifyProxy: true
         },
-        email: "",
-        maxProperties: 1000
+        maxProperties: 1
       }
     };
 

@@ -106,7 +106,25 @@ function transformPriceHistory(apifyPriceHistory: any[]): any[] {
 }
 
 // Helper functions for parallel analysis
-async function analyzeBinaryFeaturesParallel(listingText: string, toggles: any, url: string) {
+async function analyzeBinaryFeaturesParallel(listingText: string, toggles: any, url: string, apifyData?: any) {
+  // If we have Apify data, use it directly instead of AI analysis
+  if (apifyData) {
+    console.log('🔍 Using Apify data for binary features...');
+    console.log('🔍 Apify data keys:', Object.keys(apifyData));
+    
+    // Extract features from Apify data
+    const features = {
+      parking: extractFeatureFromApify(apifyData, ['parking', 'offRoadParking', 'driveway']),
+      garage: extractFeatureFromApify(apifyData, ['garage', 'integralGarage', 'detachedGarage']),
+      garden: extractFeatureFromApify(apifyData, ['garden', 'rearGarden', 'frontGarden', 'patio', 'outdoorSpace']),
+      newBuild: extractFeatureFromApify(apifyData, ['newBuild', 'newBuildProperty'])
+    };
+    
+    console.log('✅ Binary features from Apify:', features);
+    return features;
+  }
+  
+  // Fallback to AI analysis if no Apify data
   try {
     const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/analyze-binary-features`, {
       method: 'POST',
@@ -118,10 +136,10 @@ async function analyzeBinaryFeaturesParallel(listingText: string, toggles: any, 
       const data = await response.json();
       if (data.success && data.features) {
         return {
-          parking: toggles.parking ? data.features.parking : null,
-          garage: toggles.garage ? data.features.garage : null,
-          garden: toggles.garden ? data.features.garden : null,
-          newBuild: toggles.newBuild ? data.features.newBuild : null
+          parking: data.features.parking,
+          garage: data.features.garage,
+          garden: data.features.garden,
+          newBuild: data.features.newBuild
         };
       }
     }
@@ -154,6 +172,42 @@ Return JSON: {"parking": true/false/null, "garage": true/false/null, "garden": t
       newBuild: null
     };
   }
+}
+
+// Helper function to extract features from Apify data
+function extractFeatureFromApify(apifyData: any, featureKeys: string[]): boolean | null {
+  // Check if any of the feature keys exist in the Apify data
+  for (const key of featureKeys) {
+    if (apifyData[key] !== undefined && apifyData[key] !== null) {
+      return Boolean(apifyData[key]);
+    }
+  }
+  
+  // Check in amenities array if it exists
+  if (apifyData.amenities && Array.isArray(apifyData.amenities)) {
+    for (const amenity of apifyData.amenities) {
+      if (typeof amenity === 'string') {
+        const lowerAmenity = amenity.toLowerCase();
+        for (const key of featureKeys) {
+          if (lowerAmenity.includes(key.toLowerCase())) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  
+  // Check in description text
+  if (apifyData.description || apifyData.text) {
+    const text = (apifyData.description || apifyData.text || '').toLowerCase();
+    for (const key of featureKeys) {
+      if (text.includes(key.toLowerCase())) {
+        return true;
+      }
+    }
+  }
+  
+  return null; // Feature not found
 }
 
 async function analyzeAdditionalCriteriaParallel(listingText: string, anythingElse: string, url: string) {
@@ -291,12 +345,18 @@ export async function POST(request: NextRequest) {
         console.log('🔍 Running Apify scraper for:', url);
         
         const input = {
-            propertyUrls: [{ url }],
-            fullPropertyDetails: true,
-            includePriceHistory: true,
-            includeNearestSchools: false,
-            maxProperties: 1,
-            monitoringMode: false
+          propertyUrls: [{ url }],
+          fullPropertyDetails: true, // Get all property details
+          includePriceHistory: true,
+          includeNearestSchools: false,
+          maxProperties: 1,
+          monitoringMode: false,
+          addEmptyTrackerRecord: false,
+          deduplicateAtTaskLevel: false,
+          enableDelistingTracker: false,
+          proxy: {
+            useApifyProxy: true
+          }
         };
 
         const run = await client.actor("dhrumil/rightmove-scraper").call(input, {
@@ -325,24 +385,27 @@ export async function POST(request: NextRequest) {
                 propertyAddress: apifyRawData.displayAddress || apifyRawData.title || '',
                 listingPrice: parsePrice(apifyRawData.price),
                 area: extractAreaFromAddress(apifyRawData.displayAddress || ''),
-                floorAreaSqm: apifyRawData.size || null,
+                floorAreaSqm: apifyRawData.sizeSqFeetMin ? Math.round(apifyRawData.sizeSqFeetMin * 0.092903) : (apifyRawData.size || null), // Convert sq ft to sq m
                 numberOfBedrooms: apifyRawData.bedrooms || 0,
                 numberOfBathrooms: apifyRawData.bathrooms || 0,
                 propertyType: normalizePropertyType(apifyRawData.propertyType || ''),
                 
-                // Coordinates
+                // Coordinates - Use Apify's precise coordinates for Google Maps
                 coordinates: apifyRawData.coordinates ? {
                     lat: apifyRawData.coordinates.latitude || null,
                     lng: apifyRawData.coordinates.longitude || null
-                } : null,
+                } : (apifyRawData.latitude && apifyRawData.longitude ? {
+                    lat: apifyRawData.latitude,
+                    lng: apifyRawData.longitude
+                } : null),
                 
                 // URL
                 listingUrl: url,
                 
                 // Time on market data (MUCH MORE ACCURATE WITH APIFY!)
-                firstVisibleDate: apifyRawData.addedOn || null,
-                firstListedAt: apifyRawData.addedOn || null,
-                timeOnMarketDays: calculateDaysOnMarket(apifyRawData.addedOn),
+                firstVisibleDate: apifyRawData.firstVisibleDate || apifyRawData.addedOn || null,
+                firstListedAt: apifyRawData.firstVisibleDate || apifyRawData.addedOn || null,
+                timeOnMarketDays: calculateDaysOnMarket(apifyRawData.firstVisibleDate || apifyRawData.addedOn),
                 
                 // Sale history from Apify (properly transformed)
                 propertySaleHistory: transformPriceHistory(apifyRawData.priceHistory),
@@ -350,7 +413,7 @@ export async function POST(request: NextRequest) {
                 // Additional valuable data from Apify
                 tenure: apifyRawData.tenure,
                 councilTaxBand: apifyRawData.councilTaxBand,
-                epcRating: apifyRawData.epc,
+                epcRating: apifyRawData.epc?.rating || apifyRawData.epc || null,
                 features: apifyRawData.features || [],
                 images: apifyRawData.images || [],
                 floorPlans: apifyRawData.floorplans || [],
@@ -438,6 +501,13 @@ export async function POST(request: NextRequest) {
       // Get coordinates for locality analysis (now from Apify!)
       let coordinates = basicInfo.coordinates;
       console.log('🔍 DEBUG: Coordinates from Apify:', coordinates);
+      console.log('🔍 DEBUG: Apify raw data for coordinates:', {
+        hasCoordinates: !!apifyRawData.coordinates,
+        hasLatLng: !!(apifyRawData.latitude && apifyRawData.longitude),
+        coordinates: apifyRawData.coordinates,
+        latitude: apifyRawData.latitude,
+        longitude: apifyRawData.longitude
+      });
       
       if (!coordinates && basicInfo.propertyAddress) {
         console.log('🌍 Geocoding address for locality analysis...');
@@ -449,9 +519,9 @@ export async function POST(request: NextRequest) {
       }
       
       console.log('🔍 DEBUG: Final coordinates for locality:', coordinates);
+      console.log('🔍 DEBUG: Will Google Maps API be called?', !!coordinates);
 
-          // COMMENT OUT THIS ENTIRE BLOCK - it's causing the 504 timeout
-          /*
+          // Re-enable Land Registry calls with timeout protection
           const analyticsPromises = [
             fetchFiveYearTrend(postcode, basicInfo.propertyType).catch(error => {
               console.error('❌ fetchFiveYearTrend error:', error);
@@ -463,14 +533,13 @@ export async function POST(request: NextRequest) {
             }),
             fetch12MonthAverageSoldPrice(postcode, basicInfo.propertyType).catch(error => {
               console.error('❌ fetch12MonthAverageSoldPrice error:', error);
-              console.error('❌ Error stack:', error.stack);
               return 0;
-        }),
-        // Add locality data fetching
-        coordinates ? fetchLocalityData(coordinates.lat, coordinates.lng).catch(error => {
-          console.error('❌ fetchLocalityData error:', error);
-          return null;
-        }) : Promise.resolve(null)
+            }),
+            // Add locality data fetching
+            coordinates ? fetchLocalityData(coordinates.lat, coordinates.lng).catch(error => {
+              console.error('❌ fetchLocalityData error:', error);
+              return null;
+            }) : Promise.resolve(null)
           ];
 
           // Add street analytics if street name is available
@@ -489,15 +558,15 @@ export async function POST(request: NextRequest) {
           }
 
           const results = await Promise.all(analyticsPromises);
-      const [fiveYearTrend, pricePerSqm, avgSoldPrice12Months, localityData, ...streetResults] = results;
-          */
-
-          // Replace with:
-          const fiveYearTrend = null;
-          const pricePerSqm = null;
-          const avgSoldPrice12Months = null;
-          const localityData = null;
-          const streetResults = [];
+          const [fiveYearTrend, pricePerSqm, avgSoldPrice12Months, localityData, ...streetResults] = results;
+          
+          console.log('🌍 Google Maps data fetched:', localityData);
+          console.log('🔍 DEBUG: Locality data summary:', {
+            hasParks: !!localityData?.parks?.length,
+            hasSchools: !!localityData?.schools?.length,
+            hasTrainStations: !!localityData?.trainStations?.length,
+            hasSupermarkets: !!localityData?.supermarkets?.length
+          });
           console.log(`🔍 API CHECK: avgSoldPrice12Months = ${avgSoldPrice12Months}`);
       
           // Handle street results if they exist
@@ -556,10 +625,11 @@ export async function POST(request: NextRequest) {
     
     // Run parallel analysis for binary features, custom criteria, etc.
     const [binaryFeatures, additionalCriteria, customPreferences] = await Promise.all([
-      analyzeBinaryFeaturesParallel(listingText, toggles, url),
+      analyzeBinaryFeaturesParallel(listingText, toggles, url, apifyRawData),
       analyzeAdditionalCriteriaParallel(listingText, anythingElse, url),
       analyzeCustomPreferencesParallel(listingText, userPreferences, url)
     ]);
+
 
     // Step 8: Generate AI Summary & Recommendations
     console.log('🤖 Generating AI summary and recommendations...');
@@ -667,6 +737,10 @@ export async function POST(request: NextRequest) {
     };
 
     console.log('✅ Comprehensive analysis completed with Apify data:', analysisResult);
+    console.log('🔍 DEBUG: Final response locality data:', {
+      hasLocalityData: !!analysisResult.analysis.localityData,
+      localityDataKeys: analysisResult.analysis.localityData ? Object.keys(analysisResult.analysis.localityData) : 'null'
+    });
     
     // ADD THIS DEBUG LOG
     console.log('🔍 FINAL API RESPONSE - basicInfo.propertySaleHistory:', analysisResult.analysis.basicInfo.propertySaleHistory);

@@ -79,6 +79,26 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c * 1000; // Return distance in meters
 }
 
+// Validate and improve coordinate precision
+function validateCoordinates(lat: number, lng: number): { lat: number; lng: number; isValid: boolean } {
+  // Check if coordinates are valid
+  if (!lat || !lng || lat === 0 || lng === 0) {
+    return { lat: 0, lng: 0, isValid: false };
+  }
+
+  // Check if coordinates are within reasonable bounds (UK roughly)
+  if (lat < 49 || lat > 61 || lng < -8 || lng > 2) {
+    console.warn(`⚠️ Coordinates outside UK bounds: ${lat}, ${lng}`);
+    return { lat, lng, isValid: false };
+  }
+
+  // Round to 6 decimal places for precision (about 0.1m accuracy)
+  const preciseLat = Math.round(lat * 1000000) / 1000000;
+  const preciseLng = Math.round(lng * 1000000) / 1000000;
+
+  return { lat: preciseLat, lng: preciseLng, isValid: true };
+}
+
 async function searchNearbyPlaces(
   latitude: number, 
   longitude: number, 
@@ -88,8 +108,11 @@ async function searchNearbyPlaces(
   const cacheKey = `places_${latitude}_${longitude}_${placeType}_${radius}`;
   const cached = getCachedPlacesData<PlaceResult[]>(cacheKey);
   if (cached) {
+    console.log(`📋 Using cached data for ${placeType} at ${latitude}, ${longitude}`);
     return cached;
   }
+
+  console.log(`🔍 Searching for ${placeType} within ${radius}m of ${latitude}, ${longitude}`);
 
   if (!GOOGLE_MAPS_API_KEY) {
     console.warn('Google Maps API key not configured');
@@ -207,9 +230,11 @@ function getFallbackPlaces(placeType: string, latitude: number, longitude: numbe
 }
 
 export async function fetchLocalityData(latitude: number, longitude: number): Promise<LocalityData> {
-  // Check if API key is available
-  if (!GOOGLE_MAPS_API_KEY) {
-    console.warn('Google Maps API key not configured, returning empty locality data');
+  // Validate and improve coordinate precision
+  const { lat: preciseLat, lng: preciseLng, isValid } = validateCoordinates(latitude, longitude);
+  
+  if (!isValid) {
+    console.warn('Invalid coordinates provided to fetchLocalityData:', { latitude, longitude });
     return {
       parks: [],
       airports: [],
@@ -221,6 +246,23 @@ export async function fetchLocalityData(latitude: number, longitude: number): Pr
     };
   }
 
+  // Check if API key is available
+  if (!GOOGLE_MAPS_API_KEY) {
+    console.warn('Google Maps API key not configured, using fallback data');
+    // Use fallback data instead of empty data
+    return {
+      parks: getFallbackPlaces('park', preciseLat, preciseLng),
+      airports: getFallbackPlaces('airport', preciseLat, preciseLng),
+      schools: getFallbackPlaces('school', preciseLat, preciseLng),
+      hospitals: getFallbackPlaces('hospital', preciseLat, preciseLng),
+      trainStations: getFallbackPlaces('transit_station', preciseLat, preciseLng),
+      petrolStations: getFallbackPlaces('gas_station', preciseLat, preciseLng),
+      supermarkets: getFallbackPlaces('supermarket', preciseLat, preciseLng)
+    };
+  }
+
+  console.log(`🗺️ Fetching locality data for precise coordinates: ${preciseLat}, ${preciseLng}`);
+
   const [
     parks,
     airports,
@@ -230,13 +272,13 @@ export async function fetchLocalityData(latitude: number, longitude: number): Pr
     petrolStations,
     supermarkets
   ] = await Promise.all([
-    searchNearbyPlaces(latitude, longitude, 'park'),
-    searchNearbyPlaces(latitude, longitude, 'airport', 50000), // Larger radius for airports
-    searchNearbyPlaces(latitude, longitude, 'school'),
-    searchNearbyPlaces(latitude, longitude, 'hospital', 10000), // Larger radius for hospitals
-    searchNearbyPlaces(latitude, longitude, 'transit_station', 10000), // Use transit_station for better results, 10km radius
-    searchNearbyPlaces(latitude, longitude, 'gas_station'),
-    searchNearbyPlaces(latitude, longitude, 'supermarket')
+    searchNearbyPlaces(preciseLat, preciseLng, 'park', 3000), // 3km for parks
+    searchNearbyPlaces(preciseLat, preciseLng, 'airport', 50000), // 50km for airports
+    searchNearbyPlaces(preciseLat, preciseLng, 'school', 2000), // 2km for schools
+    searchNearbyPlaces(preciseLat, preciseLng, 'hospital', 15000), // 15km for hospitals
+    searchNearbyPlaces(preciseLat, preciseLng, 'transit_station', 5000), // 5km for train stations
+    searchNearbyPlaces(preciseLat, preciseLng, 'gas_station', 2000), // 2km for petrol stations
+    searchNearbyPlaces(preciseLat, preciseLng, 'supermarket', 1500) // 1.5km for supermarkets
   ]);
 
   return {

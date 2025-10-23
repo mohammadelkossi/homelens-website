@@ -5,8 +5,8 @@ const readline = require('readline');
 const path = require('path');
 
 // UPDATE THESE WITH YOUR ACTUAL VALUES FROM SUPABASE
-const SUPABASE_URL = 'https://ybnwoiumffktqaxeldzi.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlibndvaXVtZmZrdHFheGVsZHppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwMjI3NDIsImV4cCI6MjA3NTU5ODc0Mn0.7XoWEWLVsnReNvNzrFURfUAWVoFC1QxuFJ0DkHtScAU';
+const SUPABASE_URL = 'https://qlqdfyukpepozhbffhco.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFscWRmeXVrcGVwb3poYmZmaGNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwMjI3NjQsImV4cCI6MjA3NTU5ODc2NH0.Zc_81_yYuENOCHJwM8l980ah7FHyedQeXYUmAHOzUl0';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 

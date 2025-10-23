@@ -16,6 +16,7 @@
     "apify-client": "^2.18.0",
     "axios": "^1.12.2",
     "cheerio": "^1.1.2",
+    "csv-parser": "^3.2.0",
     "dotenv": "^17.2.3",
     "haversine-distance": "^1.2.4",
     "lucide-react": "^0.542.0",

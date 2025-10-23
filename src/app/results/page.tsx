@@ -304,18 +304,13 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
         <div>
         <h1 
           className="text-2xl font-semibold cursor-pointer hover:opacity-80 transition-opacity" 
-          style={{color: COLORS.tealDark}}
+          style={{color: COLORS.tealDark, fontSize: '1.688rem'}}
           onClick={() => {
             console.log('🏠 HomeLens title clicked - navigating to homepage');
             router.push('/');
           }}
         >
           HomeLens Report
-          {overview?.address && overview.address !== "123 Abbey Lane, Sheffield S10" && (
-            <span className="block text-lg font-normal text-gray-600 mt-1">
-              {overview.address}
-            </span>
-          )}
         </h1>
         </div>
         <div className="flex gap-2">
@@ -476,17 +471,23 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
             metric="yoy" 
             label="AVG PRICE GROWTH" 
             value={fmtPct(market.avgPctPriceGrowthPerYear)} 
-            helper={propertyData?.saleHistory && propertyData.saleHistory.length >= 2 ? "Property-specific history" : "Market average"}
+            helper="Property-specific CAGR"
             data={{market, overview}} 
           />
+          {/* Debug logging for CAGR display */}
+          {console.log('🔍 CAGR Display Debug:', {
+            marketAvgPctPriceGrowthPerYear: market.avgPctPriceGrowthPerYear,
+            propertyDataSaleHistoryLength: propertyData?.saleHistory?.length || 0,
+            formattedValue: fmtPct(market.avgPctPriceGrowthPerYear)
+          })}
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="text-xs uppercase tracking-wider text-gray-500">Time on market</div>
             <div className="mt-1 text-xl font-semibold" style={{color: '#DDBEA8'}}>
               {market.timeOnMarketDays || 0} days
           </div>
-            {aiAnalysis?.analysis?.enhancedAnalytics?.addedISO && (
+            {(aiAnalysis?.analysis?.basicInfo?.firstVisibleDate || aiAnalysis?.analysis?.enhancedAnalytics?.addedISO) && (
               <div className="mt-1 text-sm text-gray-500">
-                Listed on {new Date(aiAnalysis.analysis.enhancedAnalytics.addedISO).toLocaleDateString()}
+                Listed on {new Date(aiAnalysis?.analysis?.basicInfo?.firstVisibleDate || aiAnalysis.analysis.enhancedAnalytics.addedISO).toLocaleDateString()}
               </div>
             )}
           </div>
@@ -1361,12 +1362,35 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
             }
           }
           
+          console.log('🔍 Setting propertyHistory state:', {
+            currentPrice: raw.analysis.basicInfo.listingPrice,
+            saleHistoryLength: saleHistory.length,
+            hasHistory: saleHistory && saleHistory.length > 0,
+            avgAnnualGrowth: avgAnnualGrowth,
+            avgAnnualGrowthPercentage: avgAnnualGrowth ? (avgAnnualGrowth * 100).toFixed(2) + '%' : 'N/A'
+          });
+          
           setPropertyHistory({
             currentPrice: raw.analysis.basicInfo.listingPrice,
             saleHistory: saleHistory,
             hasHistory: saleHistory && saleHistory.length > 0,
             avgAnnualGrowth: avgAnnualGrowth
           });
+          
+          // Also directly update the market data if we have CAGR
+          if (avgAnnualGrowth && avgAnnualGrowth > 0) {
+            console.log('🔧 Directly updating market data with CAGR:', avgAnnualGrowth);
+            // Force a re-render by updating the data directly
+            const currentData = JSON.parse(localStorage.getItem('comprehensiveAnalysis') || '{}');
+            if (currentData.analysis) {
+              currentData.analysis.market = {
+                ...currentData.analysis.market,
+                avgPctPriceGrowthPerYear: avgAnnualGrowth
+              };
+              localStorage.setItem('comprehensiveAnalysis', JSON.stringify(currentData));
+              console.log('✅ Market data updated in localStorage with CAGR');
+            }
+          }
         }
         
       } catch (error) {
@@ -1978,9 +2002,15 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
     const met = [];
     const notMet = [];
     
-    // Check each binary feature
+    // Check each binary feature - only show features the user cares about
     Object.entries(binaryFeatures).forEach(([key, value]) => {
       const label = key.charAt(0).toUpperCase() + key.slice(1);
+      
+      // Only include features that the user has selected in their preferences
+      const userCaresAboutFeature = userPreferences?.features && userPreferences.features[key === 'newBuild' ? 'New build' : label];
+      if (!userCaresAboutFeature) {
+        return; // Skip this feature if user doesn't care about it
+      }
       
       // Get importance from user preferences if available
       let importance = 0.8; // Default importance
@@ -2148,22 +2178,6 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
         }
       }
       
-      // OLD CODE - REMOVED: This was overriding the AI summary
-      // data.summary = [
-      //   {
-      //     title: "Positives",
-      //     items: Array.isArray(aiAnalysis.positives) ? aiAnalysis.positives : ["No positive points available"]
-      //   },
-      //   {
-      //     title: "Things to consider", 
-      //     items: Array.isArray(aiAnalysis.thingsToConsider) ? aiAnalysis.thingsToConsider : ["No considerations available"]
-      //   },
-      //   {
-      //     title: "Overall",
-      //     items: Array.isArray(aiAnalysis.overall) ? aiAnalysis.overall : (aiAnalysis.overall ? [aiAnalysis.overall] : ["No overall assessment available"])
-      //   }
-      // ];
-      
       // Add locality data if available
       if (aiAnalysis.analysis?.enhancedAnalytics?.localityData) {
         data.localityData = aiAnalysis.analysis.enhancedAnalytics.localityData;
@@ -2223,24 +2237,6 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
       };
     }
     
-    // Update with real property growth data
-    console.log('📊 reportData memo - propertyHistory check:', {
-      propertyHistory,
-      hasHistory: propertyHistory?.hasHistory,
-      avgAnnualGrowth: propertyHistory?.avgAnnualGrowth,
-      growthPercentage: propertyHistory?.avgAnnualGrowth ? propertyHistory.avgAnnualGrowth.toFixed(2) + '%' : 'N/A'
-    });
-    
-    if (propertyHistory && propertyHistory.hasHistory && propertyHistory.avgAnnualGrowth) {
-      data.market = {
-        ...data.market,
-        avgPctPriceGrowthPerYear: propertyHistory.avgAnnualGrowth
-      };
-      console.log('✅ reportData memo - Updated market.avgPctPriceGrowthPerYear:', propertyHistory.avgAnnualGrowth);
-    } else {
-      console.log('❌ reportData memo - propertyHistory conditions not met');
-    }
-    
     // Update price per sqm with real calculation
     if (data.overview?.price && data.overview?.floorAreaSqm) {
       data.market = {
@@ -2257,22 +2253,23 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
       };
     }
     
-        // Update with enhanced analytics data from Land Registry + EPC API
-        if (aiAnalysis?.analysis?.enhancedAnalytics?.pricePerSqm?.averagePricePerSqm) {
-          data.market = {
-            ...data.market,
-            avgPricePerSqmPostcodeSold: aiAnalysis.analysis.enhancedAnalytics.pricePerSqm.averagePricePerSqm
-          };
-        }
+    // Update with enhanced analytics data from Land Registry + EPC API
+    if (aiAnalysis?.analysis?.enhancedAnalytics?.pricePerSqm?.averagePricePerSqm) {
+      data.market = {
+        ...data.market,
+        avgPricePerSqmPostcodeSold: aiAnalysis.analysis.enhancedAnalytics.pricePerSqm.averagePricePerSqm
+      };
+    }
 
-        // Update with time on market data from enhanced analytics
-        const dom =
-          aiAnalysis?.analysis?.enhancedAnalytics?.daysOnMarket ??
-          aiAnalysis?.enhancedAnalytics?.daysOnMarket ?? null;
+    // Update with time on market data from enhanced analytics
+    const dom =
+      aiAnalysis?.analysis?.basicInfo?.timeOnMarketDays ??
+      aiAnalysis?.analysis?.enhancedAnalytics?.daysOnMarket ??
+      aiAnalysis?.enhancedAnalytics?.daysOnMarket ?? null;
 
-        if (dom != null) {
-          data.market.timeOnMarketDays = Number(dom);
-        }
+    if (dom != null) {
+      data.market.timeOnMarketDays = Number(dom);
+    }
     
     console.log('📊 reportData memo - Final market data:', data.market);
     return data;
