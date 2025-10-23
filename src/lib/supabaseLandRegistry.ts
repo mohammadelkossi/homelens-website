@@ -1,11 +1,18 @@
 // src/lib/supabaseLandRegistry.ts
 import { createClient } from '@supabase/supabase-js';
 
-// These will come from environment variables
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Create Supabase client only if environment variables are available
+function getSupabaseClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  if (!url || !key) {
+    console.warn('⚠️ Supabase not configured - skipping Supabase operations');
+    return null;
+  }
+  
+  return createClient(url, key);
+}
 
 interface YearlyTrendData {
   year: number;
@@ -17,6 +24,12 @@ export class SupabaseLandRegistry {
   
   // Get 12-month average sold price
   async get12MonthAverageSoldPrice(postcode: string, propertyType: string): Promise<number> {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      console.warn('⚠️ Supabase not available - returning 0 for average price');
+      return 0;
+    }
+    
     const normalizedPostcode = postcode.toUpperCase().replace(/\s/g, '');
     const normalizedType = this.normalizePropertyType(propertyType);
     
@@ -42,6 +55,12 @@ export class SupabaseLandRegistry {
 
   // Get 5-year trend
   async getFiveYearTrend(postcode: string, propertyType: string): Promise<YearlyTrendData[]> {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      console.warn('⚠️ Supabase not available - returning empty trend data');
+      return [];
+    }
+    
     const normalizedPostcode = postcode.toUpperCase().replace(/\s/g, '');
     const normalizedType = this.normalizePropertyType(propertyType);
     const trendData: YearlyTrendData[] = [];
@@ -72,6 +91,12 @@ export class SupabaseLandRegistry {
 
   // Get street sales count
   async getStreetSalesCount(streetName: string, propertyType: string): Promise<number> {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      console.warn('⚠️ Supabase not available - returning 0 for street sales count');
+      return 0;
+    }
+    
     const normalizedType = this.normalizePropertyType(propertyType);
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
@@ -88,6 +113,12 @@ export class SupabaseLandRegistry {
 
   // Get street average price
   async getStreetAveragePrice(streetName: string, propertyType: string): Promise<number> {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      console.warn('⚠️ Supabase not available - returning 0 for street average price');
+      return 0;
+    }
+    
     const normalizedType = this.normalizePropertyType(propertyType);
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);

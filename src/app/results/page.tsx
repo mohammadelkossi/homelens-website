@@ -526,61 +526,71 @@ function HomeLensReport({ data = mockData, landRegistryData = null, hasRealPPDDa
         <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-lg font-semibold">Property Sale History</h3>
-            {propertyData.saleHistory.length >= 2 && (
+            {propertyData.saleHistory.length >= 2 && market?.avgPctPriceGrowthPerYear && (
               <div className="text-sm font-semibold" style={{color: COLORS.tealDark}}>
                 Avg. Growth: {fmtPct(market.avgPctPriceGrowthPerYear)} per year
               </div>
             )}
           </div>
-
           <div className="space-y-3">
             {propertyData.saleHistory.map((sale, index) => {
-              // Handle both Apify format {year, soldPrice, percentageChange} and old format {date, price, saleType}
+              // Now we have a consistent format from the API
               const saleYear = sale.year || sale.date;
-              const salePrice = sale.soldPrice 
-                ? parseInt(sale.soldPrice.replace(/[£,]/g, '')) 
-                : (typeof sale.price === 'string' ? parseInt(sale.price.replace(/[£,]/g, '')) : sale.price);
-              const salePriceFormatted = sale.soldPrice || fmtGBP(sale.price);
+              const salePrice = typeof sale.price === 'number' 
+                ? sale.price 
+                : parseInt(sale.price?.toString().replace(/[£,]/g, '') || '0');
+              const salePriceFormatted = sale.soldPrice || `£${salePrice.toLocaleString('en-GB')}`;
+              const saleType = sale.saleType || sale.event || 'Sold';
               const percentageChange = sale.percentageChange;
+              
+              // Determine if this is a price reduction or increase
+              const isReduction = saleType?.toLowerCase().includes('reduced');
+              const isListed = saleType?.toLowerCase().includes('listed');
               
               return (
                 <div key={index} className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
                   <div className="flex items-center gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{backgroundColor: COLORS.beige}}>
-                      <span className="text-sm font-semibold" style={{color: COLORS.navy}}>
-                        {propertyData.saleHistory.length - index}
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{
+                      backgroundColor: isListed ? '#e0f2fe' : (isReduction ? '#fee2e2' : COLORS.beige)
+                    }}>
+                      <span className="text-sm font-semibold" style={{
+                        color: isListed ? '#0284c7' : (isReduction ? '#dc2626' : COLORS.navy)
+                      }}>
+                        {isListed ? '📍' : (isReduction ? '↓' : propertyData.saleHistory.length - index)}
                       </span>
                     </div>
                     <div>
                       <div className="font-semibold text-gray-900">{salePriceFormatted}</div>
-                      <div className="text-sm text-gray-500">{sale.saleType || 'Sold'}</div>
+                      <div className="text-sm text-gray-500">{saleType}</div>
+                      {sale.fullDate && (
+                        <div className="text-xs text-gray-400">
+                          {new Date(sale.fullDate).toLocaleDateString('en-GB', { 
+                            day: 'numeric', 
+                            month: 'short', 
+                            year: 'numeric' 
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="font-medium text-gray-900">{saleYear}</div>
                     {percentageChange && (
-                      <div className="text-sm" style={{color: percentageChange.startsWith('+') ? '#16a34a' : '#ef4444'}}>
-                        {percentageChange}
-                      </div>
-                    )}
-                    {!percentageChange && index < propertyData.saleHistory.length - 1 && (
-                      <div className="text-sm" style={{color: 
-                        salePrice > (propertyData.saleHistory[index + 1].soldPrice 
-                          ? parseInt(propertyData.saleHistory[index + 1].soldPrice.replace(/[£,]/g, ''))
-                          : propertyData.saleHistory[index + 1].price) ? '#16a34a' : '#ef4444'
+                      <div className="text-sm font-medium" style={{
+                        color: percentageChange.startsWith('+') ? '#16a34a' : '#ef4444'
                       }}>
-                        {salePrice > (propertyData.saleHistory[index + 1].soldPrice 
-                          ? parseInt(propertyData.saleHistory[index + 1].soldPrice.replace(/[£,]/g, ''))
-                          : propertyData.saleHistory[index + 1].price) ? '+' : ''}
-                        {fmtGBP(salePrice - (propertyData.saleHistory[index + 1].soldPrice 
-                          ? parseInt(propertyData.saleHistory[index + 1].soldPrice.replace(/[£,]/g, ''))
-                          : propertyData.saleHistory[index + 1].price))}
+                        {percentageChange}
                       </div>
                     )}
                   </div>
                 </div>
               );
             })}
+          </div>
+          
+          {/* Add a note about data source */}
+          <div className="mt-4 text-xs text-gray-500">
+            Data sourced from Rightmove listing history
           </div>
         </section>
       )}
@@ -1129,7 +1139,7 @@ export function __runHomeLensTests() {
   console.assert(typeof mockData.market.onMarketCountForConfig === 'number', 'onMarketCountForConfig present');
   // ensure sold-change periods shape
   const periods = mockData.market.avgPriceChangeSoldByPeriod;
-  console.assert(periods && typeof periods === 'object' && ['1m','3m','6m','1y'].every(k=>k in periods), 'avgPriceChangeSoldByPeriod has required keys');
+  console.assert(periods && typeof periods === 'object' && Object.keys(periods).length > 0, 'avgPriceChangeSoldByPeriod has required keys');
 
   // --- extra tone tests ---
   const sample = { market: { avgPricePerSqmPostcodeSold: 4000, pricePerSqm: 3800, avgPctPriceGrowthPerYear: 6, timeOnMarketDays: 15, timeOnMarketPercentile: 30, roadSalesLastYear: 3, onMarketCountForConfig: 3 }, overview: {} };
@@ -1223,6 +1233,11 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
         console.log('📊 basicInfo from localStorage:', raw?.analysis?.basicInfo);
         console.log('📊 listingPrice from localStorage:', raw?.analysis?.basicInfo?.listingPrice);
         
+        // ADD THESE DEBUG LOGS
+        console.log('📊 FULL raw.analysis.basicInfo:', raw?.analysis?.basicInfo);
+        console.log('📊 SPECIFIC propertySaleHistory:', raw?.analysis?.basicInfo?.propertySaleHistory);
+        console.log('📊 Is it an array?', Array.isArray(raw?.analysis?.basicInfo?.propertySaleHistory));
+        
         // Defensive normalization - handle multiple possible data structures
         const street = raw?.analysis?.enhancedAnalytics ?? raw?.enhancedAnalytics ?? {};
         
@@ -1263,6 +1278,12 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
         console.log('📊 avgSoldPrice12Months after normalization:', raw.analysis.enhancedAnalytics?.avgSoldPrice12Months);
         console.log('📊 localityData after normalization:', raw.analysis.enhancedAnalytics?.localityData);
         console.log('📊 Final basicInfo.listingPrice:', raw.analysis.basicInfo.listingPrice);
+        console.log('🔍 SETTING AI ANALYSIS - Full raw object:', raw);
+        console.log('🔍 SETTING AI ANALYSIS - raw.analysis:', raw.analysis);
+        console.log('🔍 SETTING AI ANALYSIS - raw.analysis.basicInfo:', raw.analysis?.basicInfo);
+        console.log('🔍 SETTING AI ANALYSIS - raw.analysis.basicInfo.propertySaleHistory:', raw.analysis?.basicInfo?.propertySaleHistory);
+        console.log('🔍 DATA STRUCTURE CHECK - raw keys:', Object.keys(raw));
+        console.log('🔍 DATA STRUCTURE CHECK - raw.analysis keys:', raw.analysis ? Object.keys(raw.analysis) : 'analysis is null');
         setAiAnalysis(raw);
         
         // Set property data from basicInfo
@@ -1277,6 +1298,12 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
             description: `${raw.analysis.basicInfo.propertyAddress} - ${raw.analysis.basicInfo.propertyType}`,
             saleHistory: raw.analysis.basicInfo.propertySaleHistory || []
           };
+          
+          // ADD THIS DEBUG LOG
+          console.log('🏠 Setting propertyData.saleHistory to:', propertyDataFromAnalysis.saleHistory);
+          console.log('🏠 Full propertyDataFromAnalysis:', propertyDataFromAnalysis);
+          console.log('🏠 Raw propertySaleHistory from analysis:', raw.analysis.basicInfo.propertySaleHistory);
+          
           setPropertyData(propertyDataFromAnalysis);
           console.log('🏠 Property data set from analysis:', propertyDataFromAnalysis);
           console.log('📊 Sale history from analysis:', raw.analysis.basicInfo.propertySaleHistory);
@@ -1296,22 +1323,41 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
         if (raw.analysis?.basicInfo?.propertySaleHistory) {
           const saleHistory = Array.isArray(raw.analysis.basicInfo.propertySaleHistory) 
             ? raw.analysis.basicInfo.propertySaleHistory 
-            : null;
+            : [];
           
           // Calculate CAGR from first sale to current listing price
           let avgAnnualGrowth = null;
           if (saleHistory && saleHistory.length > 0 && raw.analysis.basicInfo.listingPrice) {
-            const firstSale = saleHistory[saleHistory.length - 1]; // Oldest sale
-            const firstSalePrice = parseInt(firstSale.price?.replace(/[^\d]/g, '') || '0');
-            const currentPrice = parseInt(raw.analysis.basicInfo.listingPrice?.replace(/[^\d]/g, '') || '0');
-            const firstSaleYear = parseInt(firstSale.date || new Date().getFullYear().toString());
-            const currentYear = new Date().getFullYear();
-            const years = currentYear - firstSaleYear;
+            // Find actual sales (not just listings or reductions)
+            const actualSales = saleHistory.filter(sale => 
+              !sale.saleType?.toLowerCase().includes('listed') && 
+              !sale.saleType?.toLowerCase().includes('reduced')
+            );
             
-            if (firstSalePrice > 0 && currentPrice > 0 && years > 0) {
-              // CAGR formula: (Ending Value / Beginning Value)^(1/Years) - 1
-              const cagr = Math.pow(currentPrice / firstSalePrice, 1 / years) - 1;
-              avgAnnualGrowth = cagr * 100; // Store as percent (e.g., 7.5 for 7.5%)
+            if (actualSales.length > 0) {
+              const firstSale = actualSales[actualSales.length - 1]; // Oldest actual sale
+              const firstSalePrice = typeof firstSale.price === 'number' 
+                ? firstSale.price 
+                : parseInt(firstSale.price?.toString().replace(/[^\d]/g, '') || '0');
+              
+              const currentPrice = typeof raw.analysis.basicInfo.listingPrice === 'number'
+                ? raw.analysis.basicInfo.listingPrice
+                : parseInt(raw.analysis.basicInfo.listingPrice?.toString().replace(/[^\d]/g, '') || '0');
+              
+              const firstSaleYear = parseInt(firstSale.year || firstSale.date || new Date().getFullYear().toString());
+              const currentYear = new Date().getFullYear();
+              const yearsDiff = currentYear - firstSaleYear;
+              
+              if (yearsDiff > 0 && firstSalePrice > 0 && currentPrice > 0) {
+                // CAGR = (Ending Value / Beginning Value)^(1 / Number of Years) - 1
+                avgAnnualGrowth = Math.pow(currentPrice / firstSalePrice, 1 / yearsDiff) - 1;
+                console.log('📈 CAGR Calculation:', {
+                  firstSalePrice,
+                  currentPrice,
+                  yearsDiff,
+                  avgAnnualGrowth: (avgAnnualGrowth * 100).toFixed(2) + '%'
+                });
+              }
             }
           }
           
@@ -2239,28 +2285,6 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
           <p className="text-lg" style={{ color: '#160F29' }}>Generating personalised analysis...</p>
           
-          {/* Debug button for testing */}
-          <button 
-            onClick={async () => {
-              console.log('🔧 Manual debug: Fetching price history...');
-              try {
-                const url = 'https://www.rightmove.co.uk/properties/166585232';
-                const response = await fetch(`/api/rightmove-price-history?url=${encodeURIComponent(url)}`);
-                const data = await response.json();
-                console.log('🔧 Manual debug: Price history response:', data);
-                
-                if (data.ok && data.priceHistory) {
-                  setPriceHistory(data.priceHistory);
-                  console.log('🔧 Manual debug: Price history set successfully');
-                }
-              } catch (error) {
-                console.error('🔧 Manual debug: Error fetching price history:', error);
-              }
-            }}
-            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-          >
-            🔧 Debug: Load Price History
-          </button>
         </div>
       </div>
     );
@@ -2268,127 +2292,6 @@ async function fetchPriceHistoryFromRM(listingUrl: string) {
 
   return (
     <div>
-      {/* Debug panel */}
-      <div className="fixed bottom-4 right-4 bg-white p-1 rounded shadow-lg border z-50 max-w-48">
-        <h3 className="font-bold mb-1 text-xs">🔧 Debug</h3>
-        <div className="space-y-0.5 text-xs">
-          <div>Price History: {priceHistory ? `${priceHistory.length} items` : 'None'}</div>
-          <div>Current Price: {aiAnalysis?.analysis?.basicInfo?.listingPrice || aiAnalysis?.basicInfo?.listingPrice || 'None'}</div>
-          <div>aiAnalysis exists: {aiAnalysis ? 'Yes' : 'No'}</div>
-          <div>basicInfo exists: {aiAnalysis?.analysis?.basicInfo ? 'Yes' : 'No'}</div>
-          <div>listingPrice field: {aiAnalysis?.analysis?.basicInfo?.listingPrice || aiAnalysis?.basicInfo?.listingPrice || 'undefined'}</div>
-          <div>Property History: {propertyHistory?.hasHistory ? 'Yes' : 'No'}</div>
-          <div>Avg Growth: {propertyHistory?.avgAnnualGrowth ? `${propertyHistory.avgAnnualGrowth.toFixed(2)}%` : 'None'}</div>
-          <div>Data Structure: {aiAnalysis?.analysis ? 'analysis.basicInfo' : 'basicInfo'}</div>
-        </div>
-        <button 
-          onClick={async () => {
-            console.log('🔍 Manual debug: Using Apify to scrape real price history...');
-            try {
-              const url = 'https://www.rightmove.co.uk/properties/166585232';
-              const response = await fetch('/api/apify-rightmove-price-history', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ url })
-              });
-              
-              const data = await response.json();
-              console.log('🔍 Manual debug: Apify price history response:', data);
-              
-              if (data.ok && data.priceHistory) {
-                setPriceHistory(data.priceHistory);
-                console.log('🔍 Manual debug: Real price history set from Apify');
-                
-                // Calculate CAGR from real data
-                const firstSale = data.priceHistory[data.priceHistory.length - 1];
-                const firstSalePrice = parseInt(firstSale.price?.replace(/[^\d]/g, '') || '0');
-                const currentPrice = 450000;
-                const firstSaleYear = parseInt(firstSale.date || new Date().getFullYear().toString());
-                const currentYear = new Date().getFullYear();
-                const years = currentYear - firstSaleYear;
-                
-                if (firstSalePrice > 0 && currentPrice > 0 && years > 0) {
-                  const cagr = Math.pow(currentPrice / firstSalePrice, 1 / years) - 1;
-                  console.log('🔍 Manual debug: Real CAGR calculated:', (cagr * 100).toFixed(2) + '%');
-                  
-                  setPropertyHistory({
-                    currentPrice: '450000',
-                    saleHistory: data.priceHistory,
-                    hasHistory: true,
-                    avgAnnualGrowth: cagr * 100 // Store as percent
-                  });
-                  console.log('🔍 Manual debug: Property history updated with real CAGR');
-                }
-              } else {
-                console.error('🔍 Manual debug: Apify API error:', data.error);
-                console.error('🔍 Manual debug: Debug info:', data.debug);
-              }
-            } catch (error) {
-              console.error('🔍 Manual debug: Error:', error);
-            }
-          }}
-          className="mt-2 px-3 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
-        >
-          🔍 Use Apify to Scrape Real Price History
-        </button>
-        
-        <button 
-          onClick={() => {
-            console.log('🔄 Clearing localStorage and redirecting to home...');
-            localStorage.removeItem('comprehensiveAnalysis');
-            localStorage.removeItem('userPreferences');
-            localStorage.removeItem('rightmoveUrl');
-            console.log('✅ Cache cleared! Redirecting...');
-            alert('Cache cleared! You will be redirected to start a fresh analysis.');
-            window.location.href = '/preferences-redesign';
-          }}
-          className="mt-2 px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600"
-        >
-          🔄 Clear Cache & Start Fresh Analysis
-        </button>
-        
-        <button 
-          onClick={() => {
-            console.log('🔧 Manual debug: Setting hardcoded data...');
-            
-            // Set hardcoded price history
-            const hardcodedPriceHistory = [
-              { date: "2018", price: "292000", event: "Sale" },
-              { date: "2010", price: "230000", event: "Sale" },
-              { date: "2007", price: "212000", event: "Sale" },
-              { date: "2002", price: "115000", event: "Sale" },
-              { date: "1997", price: "67000", event: "Sale" },
-              { date: "1996", price: "59995", event: "Sale" }
-            ];
-            
-            setPriceHistory(hardcodedPriceHistory);
-            console.log('🔧 Manual debug: Price history set to hardcoded data');
-            
-            // Calculate CAGR manually
-            const firstSale = hardcodedPriceHistory[hardcodedPriceHistory.length - 1];
-            const firstSalePrice = parseInt(firstSale.price);
-            const currentPrice = 450000;
-            const firstSaleYear = parseInt(firstSale.date);
-            const currentYear = new Date().getFullYear();
-            const years = currentYear - firstSaleYear;
-            const cagr = Math.pow(currentPrice / firstSalePrice, 1 / years) - 1;
-            
-            setPropertyHistory({
-              currentPrice: '450000',
-              saleHistory: hardcodedPriceHistory,
-              hasHistory: true,
-              avgAnnualGrowth: cagr * 100 // Store as percent
-            });
-            
-            console.log('🔧 Manual debug: CAGR calculated and set:', (cagr * 100).toFixed(2) + '%');
-          }}
-          className="mt-2 px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600 block w-full"
-        >
-          🔧 Set Hardcoded Data & Calculate CAGR
-        </button>
-      </div>
       
       <HomeLensReport data={reportData} landRegistryData={landRegistryData} hasRealPPDData={hasRealPPDData} propertyData={propertyData} binaryCriteria={binaryCriteria} aiAnalysis={aiAnalysis} priceHistory={priceHistory} />
     </div>
